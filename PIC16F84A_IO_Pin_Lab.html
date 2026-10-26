@@ -195,9 +195,39 @@ form.prompt span{color:#8c8c8c}
 .chip:hover{border-color:var(--accent);color:var(--accent)}
 
 
-@media (max-width:1080px){.grid{grid-template-columns:1fr}.col{display:contents}
-  .o-schem{order:1}.o-cli{order:2}.o-pins{order:3}.o-regs{order:4}.o-cli .log{height:300px}}
-@media (max-width:720px){.o-pins .ports{grid-template-columns:1fr}.o-cli .log{height:260px}}
+
+/* ===== One-screen mode: whole lab laid out on a 1600×900 stage, scaled to fit the window ===== */
+html.fit,html.fit body{height:100%;overflow:hidden}
+html.fit .app{position:fixed;left:0;top:0;width:1600px;height:900px;max-width:none;margin:0;padding:14px 16px;transform-origin:0 0;display:flex;flex-direction:column;gap:10px}
+html.fit .top{margin:0;flex:none;flex-wrap:nowrap;align-items:center}
+html.fit .top>div:first-child{display:flex;align-items:baseline;gap:16px}
+html.fit .kicker{margin:0}
+html.fit .top h1{font-size:28px;white-space:nowrap;order:-1}
+html.fit .grid{flex:1;min-height:0;grid-template-columns:minmax(0,1fr) 440px 360px;grid-template-rows:minmax(0,1fr) auto;
+  grid-template-areas:"schem cli regs" "pins cli regs";gap:12px;align-items:stretch}
+html.fit .col{display:contents}
+html.fit .o-schem{grid-area:schem}html.fit .o-pins{grid-area:pins}html.fit .o-cli{grid-area:cli}html.fit .o-regs{grid-area:regs;align-self:start}
+html.fit .card{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+html.fit .card-h{padding:9px 14px;flex:none}
+html.fit .card-h h2{font-size:17px}
+html.fit .svgwrap{flex:1;min-height:0;overflow:hidden;padding:2px 6px 0}
+html.fit #sch{width:100%;height:100%;min-width:0}
+html.fit .caption{flex:none;min-height:0;padding:8px 14px 10px;font-size:14px}
+html.fit .ports{padding:8px 12px 10px;gap:8px 14px}
+html.fit .pin{padding:4px 2px 3px;gap:2px}
+html.fit .o-pins .hint{font-size:12px;line-height:1.4}
+html.fit .o-cli .card-h{gap:6px 10px}
+html.fit .o-cli .log{flex:1;height:auto;min-height:0}
+html.fit form.prompt{flex:none;padding:8px 14px}
+html.fit .examples{flex:none;padding:0 14px 10px;gap:5px}
+html.fit .chip{padding:3px 10px;font-size:12px}
+html.fit .regs{padding:4px 12px 10px}
+html.fit .regs table{font-size:12px}
+html.fit .bit{height:20px}
+
+@media (max-width:1080px){html:not(.fit) .grid{grid-template-columns:1fr}html:not(.fit) .col{display:contents}
+  html:not(.fit) .o-schem{order:1}html:not(.fit) .o-cli{order:2}html:not(.fit) .o-pins{order:3}html:not(.fit) .o-regs{order:4}html:not(.fit) .o-cli .log{height:300px}}
+@media (max-width:720px){html:not(.fit) .o-pins .ports{grid-template-columns:1fr}html:not(.fit) .o-cli .log{height:260px}}
 </style>
 
 <div class="app">
@@ -948,6 +978,13 @@ EX.forEach(([name,lines])=>{const b=document.createElement('button');b.type='but
 
 showIdle();$('#capPh').textContent='RESET';
 $('#cli').value='BSF STATUS,RP0';
+/* fit-to-screen: landscape screens show the whole lab in one view; portrait phones scroll */
+const DW=1600,DH=900;
+function fit(){const app=$('.app'),vw=window.innerWidth,vh=window.innerHeight,on=vw>=760&&vw/vh>=1.1;
+  document.documentElement.classList.toggle('fit',on);
+  if(on){const k=Math.min(vw/DW,vh/DH);app.style.transform=`scale(${k})`;app.style.left=Math.max(0,(vw-DW*k)/2)+'px';app.style.top=Math.max(0,(vh-DH*k)/2)+'px'}
+  else{app.style.transform='';app.style.left='';app.style.top=''}}
+window.addEventListener('resize',fit);fit();
 })();
 </script>
 
