@@ -125,6 +125,42 @@ button,input,select{font:inherit;color:inherit}
 @media (max-width:1100px){.grid{grid-template-columns:1fr}.col{display:contents}.o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}}
 @media (max-width:640px){.sliders{grid-template-columns:1fr}#scope{height:520px}}
 @media (prefers-reduced-motion: reduce){*{scroll-behavior:auto}}
+/* ===== One-screen mode: the whole lab is laid out on a 1600×900 stage and scaled to fit the window ===== */
+html.fit,html.fit body{height:100%;overflow:hidden}
+html.fit .app{position:fixed;left:0;top:0;width:1600px;height:900px;max-width:none;margin:0;padding:14px 16px;transform-origin:0 0;display:flex;flex-direction:column;gap:10px}
+html.fit .top{margin:0;flex:none;flex-wrap:nowrap;align-items:center}
+html.fit .top>div{display:flex;align-items:baseline;gap:18px;min-width:0}
+html.fit .kicker{display:none}
+html.fit .top h1{font-size:28px;white-space:nowrap}
+html.fit .top p.lede{margin:0;font-size:14px;max-width:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html.fit .grid{flex:1;min-height:0;grid-template-columns:minmax(0,1fr) 360px 400px;grid-template-rows:minmax(0,1fr) 318px;
+  grid-template-areas:"scope circ verd" "ctl ctl why";gap:12px;align-items:stretch}
+html.fit .col{display:contents}
+html.fit .o1{grid-area:scope}html.fit .o2{grid-area:circ}html.fit .o3{grid-area:ctl}html.fit .o4{grid-area:verd}html.fit .o5{grid-area:why}
+html.fit .card{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+html.fit .card-h{padding:9px 14px;flex:none}
+html.fit .card-h h2{font-size:17px}
+html.fit .scope-wrap{flex:1;min-height:0;overflow:hidden;padding:4px 6px 0}
+html.fit #scope{height:100%;min-width:0}
+html.fit .scope-bar{flex:none;padding:8px 14px 10px}
+html.fit #schem{flex:1;min-height:0;width:100%}
+html.fit .state{flex:none;padding:8px 14px 10px}
+html.fit .verdict{flex:none;padding:10px 14px;max-height:52%;overflow-y:auto}
+html.fit .verdict .v{font-size:14px}
+html.fit .notes{font-size:12.8px}
+html.fit .events{flex:1;min-height:0;max-height:none;padding:6px 14px 10px;font-size:12.8px}
+html.fit .why{flex:1;min-height:0;overflow-y:auto;padding:12px 14px;font-size:12.8px}
+html.fit .ctl{flex:1;min-height:0;grid-template-columns:auto minmax(0,1fr);gap:10px 28px;padding:10px 16px 12px;align-content:start;align-items:start}
+html.fit .ctl .seg{flex-wrap:nowrap}
+html.fit .ctl #presets{flex-wrap:wrap}
+html.fit .ctl>.row:first-child .seg button,html.fit .ctl .seg button{padding:5px 10px;font-size:13px}
+html.fit .ctl>.sliders:nth-child(2){display:flex;gap:10px 22px}
+html.fit .ctl>.sliders:nth-child(3){grid-column:1/-1;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 22px}
+html.fit .sl .help{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px}
+html.fit .ctl .row{gap:4px}
+html.fit .chipbtn{padding:4px 10px;font-size:12.3px}
+html.fit #slOff{max-width:none!important}
+
 </style>
 
 <div class="app">
@@ -253,6 +289,17 @@ function fmtMs(v){return v>=100?v.toFixed(0)+' ms':v>=10?v.toFixed(1)+' ms':v>=1
 function fmtR(k){return k>=10?k.toFixed(0)+' kΩ':k.toFixed(1)+' kΩ'}
 function fmtC(u){return u>=10?u.toFixed(0)+' µF':u>=1?u.toFixed(1)+' µF':(u*1000).toFixed(0)+' nF'}
 
+/* ---------------- fit-to-screen ---------------- */
+const DW=1600,DH=900,FIT={s:1,on:false};
+function fit(){
+  const app=document.querySelector('.app'),vw=window.innerWidth,vh=window.innerHeight;
+  const on=vw>=760&&vw/vh>=1.1;   // landscape screens: whole lab in one view; portrait phones scroll
+  document.documentElement.classList.toggle('fit',on);
+  if(on){const s=Math.min(vw/DW,vh/DH);FIT.s=s;FIT.on=true;app.style.transform=`scale(${s})`;app.style.left=Math.max(0,(vw-DW*s)/2)+'px';app.style.top=Math.max(0,(vh-DH*s)/2)+'px'}
+  else{FIT.s=1;FIT.on=false;app.style.transform='';app.style.left='';app.style.top=''}
+  if(FIT.ready){draw();schem(Math.min(cursorT,R.T))}
+}
+
 /* ---------------- simulation ---------------- */
 function schedule(){
   const pw=[{t:TON,on:true}],btn=[];
@@ -380,7 +427,8 @@ let R=null,cursorT=0;
 function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
 function draw(){
   if(!R)return;
-  const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
+  const dpr=(window.devicePixelRatio||1)*(FIT.s||1),W=cv.clientWidth,H=cv.clientHeight;
+  if(!W||!H)return;
   if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
   ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
   const C={ink:css('--ink'),muted:css('--muted'),rule:css('--rule'),grid:css('--grid'),vdd:css('--vdd'),mclr:css('--mclr'),osc:css('--osc'),bad:css('--bad'),warn:css('--warn'),ok:css('--ok'),badband:css('--badband'),warnband:css('--warnband'),okband:css('--okband'),panel:css('--panel'),accent:css('--accent'),wire:css('--wire')};
@@ -389,10 +437,12 @@ function draw(){
   const idx=t=>Math.min(R.N-1,Math.max(0,Math.round(t/DT)));
   const tEnd=Math.min(cursorT,T);
   // lanes
-  const lanes={an:[18,210],osc:[232,312]};
+  const topY=18,axisH=34,lgap=12,avail=H-topY-axisH;
+  const anH=Math.round(avail*0.37),oscH=Math.round(avail*0.15);
+  const lanes={an:[topY,topY+anH],osc:[topY+anH+lgap,topY+anH+lgap+oscH]};
   const dig=[['POR pulse',1],['PWRT 72 ms',2],['OST 1024 T<sub>OSC</sub>',4],['MCLR ≥ V<sub>IH</sub>',8],['Internal RESET',16],['CPU executing',32]];
-  const dTop=338,dH=24,dGap=8;
-  const axisY=dTop+dig.length*(dH+dGap)+4;
+  const dTop=lanes.osc[1]+lgap+4,rowH=(H-axisH-dTop)/dig.length,dH=Math.max(14,Math.round(rowH*0.74)),dGap=rowH-dH;
+  const axisY=Math.round(dTop+dig.length*rowH+2);
   ctx.font='600 11.5px "IBM Plex Mono",monospace';ctx.textBaseline='middle';
   // band shading (whole height of analog + osc)
   const cols=Math.max(1,Math.floor(x1-x0));
@@ -413,7 +463,7 @@ function draw(){
   for(const v of[0,1,2,3,4,5]){const y=Math.round(Y(v))+.5;ctx.strokeStyle=C.grid;ctx.beginPath();ctx.moveTo(x0,y);ctx.lineTo(x1,y);ctx.stroke();ctx.fillText(v+' V',x0-8,y)}
   ctx.setLineDash([4,4]);ctx.strokeStyle=C.bad;ctx.beginPath();ctx.moveTo(x0,Y(VMIN)+.5);ctx.lineTo(x1,Y(VMIN)+.5);ctx.stroke();
   ctx.strokeStyle=C.muted;ctx.beginPath();ctx.moveTo(x0,Y(VPOR)+.5);ctx.lineTo(x1,Y(VPOR)+.5);ctx.stroke();ctx.setLineDash([]);
-  ctx.textAlign='left';ctx.font='500 10.5px "IBM Plex Mono",monospace';ctx.fillStyle=C.bad;ctx.fillText('4.0 V min (4 MHz)',x1-118,Y(VMIN)-8);ctx.fillStyle=C.muted;ctx.fillText('1.6 V POR trip',x1-96,Y(VPOR)-8);
+  ctx.textAlign='left';ctx.font='500 10.5px "IBM Plex Mono",monospace';const tag=(txt,x,y,col)=>{const w=ctx.measureText(txt).width;ctx.fillStyle=C.panel;ctx.fillRect(x-3,y-7,w+6,14);ctx.fillStyle=col;ctx.fillText(txt,x,y)};tag('4.0 V min (4 MHz)',x1-122,Y(VMIN)-9,C.bad);tag('1.6 V POR trip',x1-100,Y(VPOR)-9,C.muted);
   ctx.font='600 11.5px "IBM Plex Mono",monospace';ctx.textAlign='left';ctx.fillStyle=C.ink;ctx.fillText('VDD / MCLR',8,lanes.an[0]+8);
   ctx.fillText('OSC1',8,(lanes.osc[0]+lanes.osc[1])/2);ctx.fillStyle=C.muted;ctx.font='500 10px "IBM Plex Mono",monospace';ctx.fillText('not to scale',8,(lanes.osc[0]+lanes.osc[1])/2+14);
   // traces
@@ -457,7 +507,7 @@ function draw(){
   ctx.textAlign='left';ctx.fillStyle=C.ink;ctx.font='600 10.5px "IBM Plex Mono",monospace';ctx.fillText('ON',X(TON)+4,lanes.an[0]+10);
   // run markers
   R.runStarts.forEach((r,k)=>{if(r.t>tEnd||r.t>T)return;const x=X(r.t)+.5;ctx.strokeStyle=r.healthy?C.ok:C.bad;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,lanes.an[0]);ctx.lineTo(x,axisY);ctx.stroke();
-    ctx.fillStyle=r.healthy?C.ok:C.bad;ctx.font='700 11px "IBM Plex Sans",sans-serif';ctx.textAlign=x>x1-120?'right':'left';ctx.fillText(r.healthy?'CPU starts ✓':'CPU starts ✕',x+(x>x1-120?-6:6),lanes.an[0]+26+(k%3)*15)});
+    ctx.fillStyle=r.healthy?C.ok:C.bad;ctx.font='700 11px "IBM Plex Sans",sans-serif';ctx.textAlign=x>x1-120?'right':'left';ctx.fillText(r.healthy?'CPU starts ✓':'CPU starts ✕',x+(x>x1-120?-6:6),lanes.an[1]-10-(k%3)*15)});
   // cursor
   if(cursorT<T){const x=X(cursorT)+.5;ctx.strokeStyle=C.accent;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x,lanes.an[0]);ctx.lineTo(x,axisY);ctx.stroke()}
 }
@@ -558,17 +608,17 @@ function sync(){
   $('#circName').textContent=NAMES[P.circ];
 }
 const PRESETS=[
-  ['Datasheet minimum: MCLR to VDD, PWRTE on',{circ:'none',pwrte:1,osc:'XT',rise:20,xs:8,scn:'on'}],
-  ['No protection at all',{circ:'none',pwrte:0,osc:'RC',rise:20,scn:'on'}],
-  ['Crystal only (PWRTE off)',{circ:'none',pwrte:0,osc:'XT',rise:30,xs:6,scn:'on'}],
-  ['Very slow supply',{circ:'none',pwrte:1,osc:'XT',rise:300,xs:8,scn:'on'}],
-  ['Slow supply fixed by RC',{circ:'b',pwrte:1,osc:'XT',rise:300,R:10,C:22,scn:'on'}],
-  ['Power glitch: (a) without the diode',{circ:'a',pwrte:0,osc:'XT',rise:10,R:10,C:4.7,scn:'dip',off:15}],
-  ['Power glitch: (b) with the diode',{circ:'b',pwrte:0,osc:'XT',rise:10,R:10,C:4.7,scn:'dip',off:15}],
-  ['R too large (180 kΩ)',{circ:'b',pwrte:1,osc:'XT',rise:20,R:180,C:1,scn:'on'}],
-  ['Manual reset button',{circ:'c',pwrte:1,osc:'XT',rise:20,R:10,scn:'btn'}]
+  ['Datasheet minimum','MCLR tied to VDD with PWRTE on',{circ:'none',pwrte:1,osc:'XT',rise:20,xs:8,scn:'on'}],
+  ['No protection','MCLR to VDD, PWRTE off, RC oscillator',{circ:'none',pwrte:0,osc:'RC',rise:20,scn:'on'}],
+  ['Crystal only, PWRTE off','Only the 1024-cycle OST delays the start',{circ:'none',pwrte:0,osc:'XT',rise:30,xs:6,scn:'on'}],
+  ['Very slow supply','Supply too slow for the internal POR',{circ:'none',pwrte:1,osc:'XT',rise:300,xs:8,scn:'on'}],
+  ['Slow supply + RC','The datasheet RC circuit (b) fixes a slow supply',{circ:'b',pwrte:1,osc:'XT',rise:300,R:10,C:22,scn:'on'}],
+  ['Glitch: (a) no diode','Quick off/on with circuit (a)',{circ:'a',pwrte:0,osc:'XT',rise:10,R:10,C:4.7,scn:'dip',off:15}],
+  ['Glitch: (b) with diode','Quick off/on with circuit (b)',{circ:'b',pwrte:0,osc:'XT',rise:10,R:10,C:4.7,scn:'dip',off:15}],
+  ['R too large','R = 180 kΩ: leakage keeps MCLR below VIH',{circ:'b',pwrte:1,osc:'XT',rise:20,R:180,C:1,scn:'on'}],
+  ['Reset button','Circuit (c): press the reset button while running',{circ:'c',pwrte:1,osc:'XT',rise:20,R:10,scn:'btn'}]
 ];
-PRESETS.forEach(([n,o])=>{const b=document.createElement('button');b.type='button';b.className='chipbtn';b.textContent=n;b.addEventListener('click',()=>{Object.assign(P,o);sync();rerun(true)});$('#presets').appendChild(b)});
+PRESETS.forEach(([n,tip,o])=>{const b=document.createElement('button');b.type='button';b.className='chipbtn';b.textContent=n;b.title=tip;b.addEventListener('click',()=>{Object.assign(P,o);sync();rerun(true)});$('#presets').appendChild(b)});
 
 /* ---------------- play ---------------- */
 let raf=null,playStart=0;
@@ -589,11 +639,12 @@ function rerun(animate){
   if(raf){cancelAnimationFrame(raf);raf=null;$('#playBtn').textContent='▶ Replay power-up'}
   if(animate)play();else{clearTimeout(rerunTimer);setCursor(R.T)}
 }
-window.addEventListener('resize',()=>draw());
+window.addEventListener('resize',fit);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{fit()});
 if(window.matchMedia)window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{draw();schem(Math.min(cursorT,R.T))});
 new MutationObserver(()=>{draw();schem(Math.min(cursorT,R.T))}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 
-sync();R=simulate();verdict(R);setCursor(R.T);
+fit();sync();R=simulate();verdict(R);FIT.ready=true;setCursor(R.T);fit();
 })();
 </script>
 
