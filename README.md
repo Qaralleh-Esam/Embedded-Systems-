@@ -9,6 +9,7 @@ Browser-based, cycle-accurate simulators for classic Microchip PIC microcontroll
 | PIC16F877 Simulation Lab | PIC16F877 (40-pin, 4 register banks, 8K×14 Flash) | [Launch](https://claude.ai/artifact/QENMwShFuEUowECJ4RFzPK) |
 | PIC16F84A Simulation Lab | PIC16F84A (18-pin, 2 register banks, 1K×14 Flash) | [Launch](https://claude.ai/artifact/Bw4e2LxvsEXsAvTNjKfBgE) |
 | PIC16F84A I/O Pin Lab | One PIC16F84A port pin: data/TRIS latches, tri-state buffers, switch and LED, Q1–Q4 | [Launch](https://qaralleh-esam.github.io/Embedded-Systems-/PIC16F84A_IO_Pin_Lab.html) |
+| PIC16F84A Power-Up Reset Lab | VDD rise, crystal start-up, POR, PWRTE, OST and the external RC reset circuits on MCLR | [Launch](https://qaralleh-esam.github.io/Embedded-Systems-/PIC16F84A_Power_Up_Reset_Lab.html) |
 
 Each lab is a single self-contained `.html` file — download it and open it directly in any modern browser, or host it with GitHub Pages (see below).
 

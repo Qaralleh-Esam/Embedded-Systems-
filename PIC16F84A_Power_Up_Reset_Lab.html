@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Interactive PIC16F84A power-up simulator: VDD rise, crystal start-up, POR, PWRTE, OST and external RC reset circuits on MCLR.">
+<meta name="author" content="Esam A. Al-Qaralleh">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Power-Up Reset Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: oscilloscope timeline (hero, left) + live reset-circuit schematic (right);
+   controls and the event log / verdict underneath. Same lab-bench family as the I/O Pin Lab. */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --panel-2:#f6f8fa; --ink:#132033; --muted:#5a6879; --rule:#d5dce4;
+  --wire:#3b4a5e; --vdd:#d9480f; --mclr:#1971c2; --osc:#2b8a3e; --bad:#e03131; --warn:#f08c00; --ok:#2f9e44; --accent:#0b5cad;
+  --badband:rgba(224,49,49,.09); --warnband:rgba(240,140,0,.11); --okband:rgba(47,158,68,.10); --grid:#e3e8ee;
+  --display:'IBM Plex Sans Condensed','Arial Narrow',system-ui,sans-serif;
+  --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0e131a; --panel:#151c26; --panel-2:#1b2431; --ink:#e4eaf2; --muted:#93a1b3; --rule:#2a3546;
+  --wire:#8a9ab0; --vdd:#ff7b47; --mclr:#4dabf7; --osc:#51cf66; --bad:#ff6b6b; --warn:#ffa94d; --ok:#69db7c; --accent:#6cb2ff;
+  --badband:rgba(255,107,107,.12); --warnband:rgba(255,169,77,.12); --okband:rgba(105,219,124,.10); --grid:#223040; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0e131a; --panel:#151c26; --panel-2:#1b2431; --ink:#e4eaf2; --muted:#93a1b3; --rule:#2a3546;
+  --wire:#8a9ab0; --vdd:#ff7b47; --mclr:#4dabf7; --osc:#51cf66; --bad:#ff6b6b; --warn:#ffa94d; --ok:#69db7c; --accent:#6cb2ff;
+  --badband:rgba(255,107,107,.12); --warnband:rgba(255,169,77,.12); --okband:rgba(105,219,124,.10); --grid:#223040; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);-webkit-font-smoothing:antialiased}
+.app{max-width:1360px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:16px}
+.kicker{font:600 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+.top h1{font-size:clamp(28px,4vw,38px);font-weight:700;line-height:1}
+.top h1 span{color:var(--accent)}
+.top p.lede{margin:8px 0 0;max-width:70ch;color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:16px;align-items:start}
+.col{display:grid;gap:16px;align-content:start;min-width:0}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;min-width:0}
+.card-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:12px 16px;border-bottom:1px solid var(--rule)}
+.card-h h2{font-size:19px;font-weight:600}
+.sub{font:500 11.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.btn{border:1px solid var(--rule);background:var(--panel-2);border-radius:6px;padding:6px 12px;font-size:13.5px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn[disabled]{opacity:.45;cursor:default}
+
+/* scope */
+.scope-wrap{overflow-x:auto;padding:8px 8px 0}
+#scope{display:block;width:100%;min-width:660px;height:560px}
+.scope-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:10px 16px 14px;border-top:1px solid var(--rule)}
+.scope-bar input[type=range]{flex:1;min-width:160px;accent-color:var(--accent)}
+.readout{font:500 13px var(--mono);font-variant-numeric:tabular-nums;color:var(--muted)}
+.readout b{color:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font:500 12px var(--mono);color:var(--muted)}
+.legend i{display:inline-block;width:20px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}
+.legend .sw{display:inline-block;width:14px;height:12px;vertical-align:middle;margin-right:6px;border-radius:2px}
+
+/* schematic */
+#schem{display:block;width:100%;height:auto}
+#schem text{font-family:var(--mono);fill:var(--ink)}
+#schem .lb{font-size:13px;font-weight:600}
+#schem .sm{font-size:11px;fill:var(--muted)}
+#schem .val{font-size:12.5px;font-weight:600}
+.wr{fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.cmp{fill:var(--panel);stroke:var(--wire);stroke-width:2.2;stroke-linejoin:round}
+.chip{fill:var(--panel-2);stroke:var(--wire);stroke-width:2.2}
+.gl{fill:none;stroke:var(--wire);stroke-width:2.2;stroke-linecap:round}
+.state{display:flex;align-items:center;gap:10px;padding:10px 16px 14px;border-top:1px solid var(--rule)}
+.pill{font:600 12.5px var(--mono);padding:5px 10px;border-radius:999px;border:1px solid var(--rule);white-space:nowrap}
+.pill.off{color:var(--muted)}
+.pill.rst{background:color-mix(in srgb,var(--warn) 18%,var(--panel));border-color:var(--warn)}
+.pill.run{background:color-mix(in srgb,var(--ok) 18%,var(--panel));border-color:var(--ok)}
+.pill.bad{background:color-mix(in srgb,var(--bad) 18%,var(--panel));border-color:var(--bad)}
+.state p{margin:0;font-size:13.5px;color:var(--muted)}
+
+/* controls */
+.ctl{padding:14px 16px 16px;display:grid;gap:16px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1px solid var(--rule);background:var(--panel-2);border-radius:6px;padding:6px 11px;font-size:13.5px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.seg button:hover{border-color:var(--accent)}
+.row{display:grid;gap:6px}
+.row>label,.lbl{font-size:13px;font-weight:600}
+.lbl small{font-weight:400;color:var(--muted)}
+.sliders{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 22px}
+.sl{display:grid;gap:4px}
+.sl .top2{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+.sl .top2 b{font:600 13px var(--mono);font-variant-numeric:tabular-nums}
+.sl input{width:100%;accent-color:var(--accent)}
+.sl .help{font-size:12px;color:var(--muted)}
+.sl.dim{opacity:.4}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.chipbtn{border:1px solid var(--rule);background:var(--panel);border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer}
+.chipbtn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* verdict & log */
+.verdict{padding:14px 16px;border-bottom:1px solid var(--rule);display:grid;gap:6px}
+.verdict .v{font:600 15px var(--body);display:flex;gap:10px;align-items:flex-start}
+.verdict .v .ic{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--mono);color:#fff}
+.v.good .ic{background:var(--ok)}.v.bad .ic{background:var(--bad)}.v.mid .ic{background:var(--warn)}
+.notes{margin:0;padding:0 0 0 18px;font-size:13.5px;color:var(--ink)}
+.notes li{margin:4px 0}
+.notes li.w{color:var(--ink)}
+.notes li::marker{color:var(--muted)}
+.events{list-style:none;margin:0;padding:10px 16px 14px;display:grid;gap:2px;font-size:13.5px;max-height:330px;overflow-y:auto}
+.events li{display:grid;grid-template-columns:78px minmax(0,1fr);gap:10px;padding:4px 0;border-bottom:1px dashed var(--rule)}
+.events li:last-child{border-bottom:0}
+.events .tm{font:600 12.5px var(--mono);font-variant-numeric:tabular-nums;color:var(--muted);text-align:right}
+.events li.k-run .tx{color:var(--ok);font-weight:600}.events li.k-bad .tx{color:var(--bad);font-weight:600}.events li.k-warn .tx{color:var(--warn)}
+.why{padding:14px 16px 16px;font-size:13.5px;color:var(--ink)}
+.why h3{font-size:16px;margin-bottom:6px}
+.why ol{margin:0;padding-left:20px}
+.why li{margin:4px 0}
+.why code{font-family:var(--mono);font-size:.92em}
+
+@media (max-width:1100px){.grid{grid-template-columns:1fr}.col{display:contents}.o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}}
+@media (max-width:640px){.sliders{grid-template-columns:1fr}#scope{height:520px}}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto}}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div>
+      <p class="kicker">PIC16F84A · the first milliseconds after switch-on</p>
+      <h1>Power-Up <span>Reset</span> Lab</h1>
+      <p class="lede">When you switch on, VDD ramps up and the crystal takes milliseconds to start. Until both are healthy the PIC must be held in reset. Pick a reset circuit, set PWRTE, and watch when the CPU is allowed to run.</p>
+    </div>
+  </header>
+
+  <main class="grid">
+    <div class="col">
+      <section class="card o1" aria-labelledby="scTitle">
+        <div class="card-h">
+          <h2 id="scTitle">Power-up timeline</h2>
+          <div class="legend" aria-label="Trace colours">
+            <span><i style="border-color:var(--vdd)"></i>VDD</span>
+            <span><i style="border-color:var(--mclr);border-top-style:dashed"></i>MCLR pin</span>
+            <span><i style="border-color:var(--osc)"></i>OSC1</span>
+            <span><span class="sw" style="background:var(--badband);outline:1px solid var(--bad)"></span>VDD below 4.0 V</span>
+            <span><span class="sw" style="background:var(--warnband);outline:1px solid var(--warn)"></span>clock not stable</span>
+          </div>
+        </div>
+        <div class="scope-wrap"><canvas id="scope" role="img" aria-label="Timeline of VDD, MCLR, oscillator and internal reset signals after power-up"></canvas></div>
+        <div class="scope-bar">
+          <button class="btn primary" id="playBtn" type="button">▶ Replay power-up</button>
+          <input type="range" id="cursor" min="0" max="1000" value="1000" aria-label="Time cursor">
+          <span class="readout" id="tRead">t = <b>0.0 ms</b></span>
+        </div>
+      </section>
+
+      <section class="card o3" aria-labelledby="ctlTitle">
+        <div class="card-h"><h2 id="ctlTitle">Set up the board</h2><span class="sub">changes re-run the power-up</span></div>
+        <div class="ctl">
+          <div class="row">
+            <span class="lbl">Reset circuit on MCLR (pin 4)</span>
+            <div class="seg" id="circSeg" role="group" aria-label="Reset circuit">
+              <button type="button" data-v="none">MCLR tied to VDD</button>
+              <button type="button" data-v="a">(a) R + C</button>
+              <button type="button" data-v="b">(b) R + C + diode + Rs</button>
+              <button type="button" data-v="c">(c) Reset button</button>
+            </div>
+          </div>
+          <div class="sliders">
+            <div class="row">
+              <span class="lbl">Power-up timer <small>config bit PWRTE (active-low)</small></span>
+              <div class="seg" id="pwrtSeg" role="group" aria-label="Power-up timer">
+                <button type="button" data-v="1">_PWRTE_ON · 72 ms</button>
+                <button type="button" data-v="0">_PWRTE_OFF</button>
+              </div>
+            </div>
+            <div class="row">
+              <span class="lbl">Oscillator mode <small>FOSC bits</small></span>
+              <div class="seg" id="oscSeg" role="group" aria-label="Oscillator mode">
+                <button type="button" data-v="XT">XT · 4 MHz crystal</button>
+                <button type="button" data-v="RC">RC</button>
+              </div>
+            </div>
+          </div>
+          <div class="sliders">
+            <div class="sl"><div class="top2"><label for="sRise">Supply rise time (0 → 95 %)</label><b id="vRise"></b></div><input type="range" id="sRise" min="0" max="1000"><span class="help" id="hRise"></span></div>
+            <div class="sl" id="slX"><div class="top2"><label for="sX">Crystal start-up time</label><b id="vX"></b></div><input type="range" id="sX" min="0" max="1000"><span class="help">Time for the crystal to build to full, steady amplitude.</span></div>
+            <div class="sl" id="slR"><div class="top2"><label for="sR">R (MCLR pull-up)</label><b id="vR"></b></div><input type="range" id="sR" min="0" max="1000"><span class="help" id="hR"></span></div>
+            <div class="sl" id="slC"><div class="top2"><label for="sC">C (MCLR to GND)</label><b id="vC"></b></div><input type="range" id="sC" min="0" max="1000"><span class="help" id="hC"></span></div>
+          </div>
+          <div class="row">
+            <span class="lbl">What happens after switch-on</span>
+            <div class="seg" id="scnSeg" role="group" aria-label="Scenario">
+              <button type="button" data-v="on">Switch on</button>
+              <button type="button" data-v="dip">Switch off and quickly on again</button>
+              <button type="button" data-v="btn">Press the reset button</button>
+            </div>
+            <div class="sl" id="slOff" style="max-width:420px"><div class="top2"><label for="sOff">Time switched off</label><b id="vOff"></b></div><input type="range" id="sOff" min="0" max="1000"><span class="help">Short interruptions may not let VDD fall low enough to re-arm the internal POR.</span></div>
+          </div>
+          <div class="row">
+            <span class="lbl">Try these</span>
+            <div class="presets" id="presets"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card o2" aria-labelledby="schTitle">
+        <div class="card-h"><h2 id="schTitle">Reset circuit</h2><span class="sub" id="circName"></span></div>
+        <svg id="schem" viewBox="0 0 400 360" role="img" aria-label="Selected reset circuit with live voltages"></svg>
+        <div class="state"><span class="pill off" id="pill">OFF</span><p id="stateTxt">Power is off.</p></div>
+      </section>
+
+      <section class="card o4" aria-labelledby="vTitle">
+        <div class="card-h"><h2 id="vTitle">Did the PIC start safely?</h2></div>
+        <div class="verdict" id="verdict"></div>
+        <ul class="events" id="events" aria-label="Event log"></ul>
+      </section>
+
+      <section class="card o5" aria-labelledby="whyTitle">
+        <div class="why">
+          <h3 id="whyTitle">Why keep the PIC in reset?</h3>
+          <ol>
+            <li><b>VDD is still climbing.</b> Below about 4 V a 4 MHz PIC16F84A is outside its operating range: instructions can execute wrongly and RAM and register contents are not reliable.</li>
+            <li><b>The crystal is still starting.</b> Its oscillation grows from noise over several milliseconds; early cycles are small, irregular and can glitch the CPU.</li>
+            <li><b>The answer is a delay.</b> The internal POR, the 72 ms power-up timer (PWRTE) and the 1024-cycle oscillator start-up timer (XT/LP/HS only), or an external RC on MCLR, hold the chip in reset until both are healthy.</li>
+          </ol>
+          <p style="margin:10px 0 0;color:var(--muted)">The datasheet's external circuit (b): R &lt; 40 kΩ so MCLR leakage does not pull the pin below its input threshold; Rs = 100 Ω–1 kΩ limits current into MCLR if C discharges into it (ESD or overstress); the diode empties C quickly when the power goes off. The 16F84A has no brown-out reset, so short supply dips are its weak spot.</p>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+/* ---------------- constants (PIC16F84A datasheet, rounded) ---------------- */
+const VNOM=5.0, VPOR=1.6, VARM=0.7, VMIN=4.0, VOSC=2.0, VIHF=0.85, TPWRT=72, TOSC=0.00025 /* ms @4MHz */, NOST=1024, ILEAK=0.005 /* V per kΩ = 5 µA */;
+const TON=5, TOFF_TAU=8, DT=0.02;
+
+/* ---------------- parameters ---------------- */
+const logMap=(x,a,b)=>a*Math.pow(b/a,x/1000), logInv=(v,a,b)=>1000*Math.log(v/a)/Math.log(b/a);
+const P={circ:'b',pwrte:1,osc:'XT',rise:20,xs:8,R:10,C:4.7,scn:'on',off:20};
+const RANGES={rise:[0.5,400],xs:[1,40],R:[1,200],C:[0.1,47],off:[2,200]};
+
+function fmtMs(v){return v>=100?v.toFixed(0)+' ms':v>=10?v.toFixed(1)+' ms':v>=1?v.toFixed(2)+' ms':(v*1000).toFixed(0)+' µs'}
+function fmtR(k){return k>=10?k.toFixed(0)+' kΩ':k.toFixed(1)+' kΩ'}
+function fmtC(u){return u>=10?u.toFixed(0)+' µF':u>=1?u.toFixed(1)+' µF':(u*1000).toFixed(0)+' nF'}
+
+/* ---------------- simulation ---------------- */
+function schedule(){
+  const pw=[{t:TON,on:true}],btn=[];
+  if(P.scn==='dip'){pw.push({t:TON+200,on:false});pw.push({t:TON+200+P.off,on:true})}
+  if(P.scn==='btn'){btn.push([TON+200,TON+240])}
+  return{pw,btn};
+}
+function simulate(){
+  const sc=schedule();
+  const Tsim=P.scn==='on'?700:Math.max(900,TON+200+P.off+500);
+  const N=Math.ceil(Tsim/DT);
+  const A={vdd:new Float32Array(N),m:new Float32Array(N),amp:new Float32Array(N),flags:new Uint8Array(N)};
+  // flags bits: 1 POR pulse, 2 PWRT running, 4 OST counting, 8 MCLR high, 16 internal reset, 32 running, 64 alive
+  const ev=[];const E=(t,txt,k)=>ev.push({t,txt,k:k||''});
+  let vdd=0,vc=0,amp=0,on=false,armed=true,pending=false,pwrtEnd=0,ostAcc=0,ostDone=true,running=false,porPulseEnd=-1,pi=0;
+  let prevV=0,wasMH=false,wasMin=false,wasOsc=false,wasStable=false,runStarts=[],badRun=false,dropWarned=false;
+  const tauOn=Math.max(P.rise/3,0.05),tauX=P.osc==='XT'?Math.max(P.xs/3,0.05):0.08;
+  const rc=P.R*P.C;
+  for(let i=0;i<N;i++){
+    const t=i*DT;
+    while(pi<sc.pw.length&&t>=sc.pw[pi].t){on=sc.pw[pi].on;E(sc.pw[pi].t,on?'Power switched <b>on</b>':'Power switched <b>off</b>');pi++}
+    const btnDown=sc.btn.some(([a,b])=>t>=a&&t<b);
+    const tgt=on?VNOM:0,tau=on?tauOn:TOFF_TAU;
+    vdd+=(tgt-vdd)*(1-Math.exp(-DT/tau));
+    // MCLR pin
+    let m;
+    if(P.circ==='none')m=vdd;
+    else if(P.circ==='c')m=btnDown?0:vdd;
+    else{
+      vc+=(vdd-vc)*(1-Math.exp(-DT/rc));
+      if(P.circ==='b'&&vc>vdd+0.6)vc=vdd+0.6;
+      m=Math.max(0,vc-(vdd>VPOR?ILEAK*P.R:0));
+    }
+    if(P.circ==='c'&&btnDown&&!sc.btn._logged){sc.btn._logged=1;E(t,'Reset button pressed: MCLR pulled to 0 V')}
+    if(P.circ==='c'&&!btnDown&&sc.btn._logged===1&&sc.btn.length&&t>=sc.btn[0][1]){sc.btn._logged=2;E(t,'Reset button released')}
+    // oscillator amplitude
+    if(vdd>=VOSC){if(amp<0.01)amp=0.01;amp+=(1-amp)*(1-Math.exp(-DT/tauX))}else amp*=Math.exp(-DT/0.4);
+    // events on analog thresholds
+    const oscRun=amp>0.02;if(oscRun&&!wasOsc)E(t,`Oscillator starts (VDD = ${vdd.toFixed(1)} V)`);if(!oscRun&&wasOsc)E(t,'Oscillator stops');wasOsc=oscRun;
+    const stable=amp>=0.95;if(stable&&!wasStable)E(t,P.osc==='XT'?'Crystal oscillation stable':'RC oscillator running');wasStable=stable;
+    const atMin=vdd>=VMIN;if(atMin&&!wasMin)E(t,'VDD reaches 4.0 V (operating range)');if(!atMin&&wasMin)E(t,'VDD falls below 4.0 V',running?'bad':'warn');wasMin=atMin;
+    // POR
+    if(vdd<VARM&&!armed){armed=true}
+    const alive=vdd>=VPOR;
+    if(alive&&armed&&prevV<VPOR){
+      armed=false;const slope=(vdd-prevV)/DT;
+      if(slope>=0.05){
+        E(t,`VDD passes ${VPOR} V: internal <b>POR</b> pulse`);porPulseEnd=t+1.2;pending=true;pwrtEnd=t+(P.pwrte?TPWRT:0);ostAcc=0;ostDone=P.osc!=='XT';
+        if(P.pwrte)E(t,'Power-up timer starts (72 ms)');
+      }else{
+        E(t,`No POR: VDD rose at only ${slope.toFixed(3)} V/ms (needs ≥ 0.05 V/ms). PWRT and OST never start`,'bad');
+      }
+    }else if(alive&&!armed&&prevV<VPOR&&!pending){
+      E(t,`VDD back above ${VPOR} V, but it never fell below ~${VARM} V, so no new POR`,'warn');
+    }
+    if(!alive&&prevV>=VPOR){pending=false;if(running){running=false;E(t,`VDD below ${VPOR} V: chip stops`,'warn')}}
+    // timers
+    let pwrtOn=false,ostOn=false;
+    if(pending){
+      if(t<pwrtEnd)pwrtOn=true;
+      else{
+        if(P.pwrte&&t-DT<pwrtEnd)E(pwrtEnd,'Power-up timer expires');
+        if(!ostDone){ostOn=true;if(amp>=0.5)ostAcc+=DT;if(ostAcc>=NOST*TOSC){ostDone=true;E(t,'OST has counted 1024 clock cycles')}}
+        if(ostDone){pending=false}
+      }
+    }
+    const mHigh=alive&&m>=VIHF*vdd;
+    if(mHigh&&!wasMH&&alive)E(t,`MCLR rises above V<sub>IH</sub> (${m.toFixed(2)} V)`);
+    if(!mHigh&&wasMH&&alive)E(t,'MCLR pulled low: chip held in reset','warn');
+    wasMH=mHigh;
+    const rst=!alive||pending||!mHigh;
+    if(!rst&&!running){
+      running=true;const healthy=vdd>=VMIN&&amp>=0.95;
+      runStarts.push({t,vdd,amp,healthy});
+      E(t,`<b>CPU starts executing</b> · VDD = ${vdd.toFixed(2)} V · clock at ${Math.round(amp*100)} % amplitude`,healthy?'run':'bad');
+    }
+    if(rst&&running&&alive){running=false;E(t,'CPU held in reset','warn')}
+    if(running&&!on&&vdd<VMIN&&!dropWarned){dropWarned=true;badRun=true}
+    let f=0;if(t<porPulseEnd)f|=1;if(pwrtOn)f|=2;if(ostOn)f|=4;if(mHigh)f|=8;if(rst)f|=16;if(running)f|=32;if(alive)f|=64;
+    A.vdd[i]=vdd;A.m[i]=m;A.amp[i]=amp;A.flags[i]=f;
+    prevV=vdd;
+  }
+  ev.sort((a,b)=>a.t-b.t);
+  // view window
+  const lastRun=runStarts.length?runStarts[runStarts.length-1].t:0;
+  let interest=Math.max(lastRun,P.scn==='on'?0:TON+200+P.off+40,TON+P.rise*1.1);
+  if(P.scn==='on'&&!runStarts.length)interest=Math.max(interest,300);
+  const NICE=[25,50,75,100,150,200,250,300,400,500,600,800];
+  let T=NICE.find(v=>v>=interest*1.18)||800;T=Math.min(T,Tsim);
+  return{A,N,ev,runStarts,T,badRun,Tsim};
+}
+
+/* ---------------- verdict ---------------- */
+function verdict(R){
+  const v=$('#verdict');let h='';
+  const first=R.runStarts[0];
+  const notes=[];
+  if(!first){h=`<div class="v mid"><span class="ic">!</span><span>The CPU never left reset in this window.</span></div>`}
+  else{
+    const bad=R.runStarts.filter(r=>!r.healthy);
+    const re=R.runStarts.length>1?` It restarted ${R.runStarts.length-1===1?'once':R.runStarts.length-1+' times'} later, ${bad.length?'':'each time with healthy conditions'}.`:'';
+    if(!bad.length)h=`<div class="v good"><span class="ic">✓</span><span>Healthy start. The CPU first ran at ${fmtMs(first.t-TON)} after switch-on, with VDD = ${first.vdd.toFixed(2)} V and a stable clock.${re}</span></div>`;
+    else{const b=bad[0];h=`<div class="v bad"><span class="ic">✕</span><span>${b===first?`Unsafe start ${fmtMs(b.t-TON)} after switch-on`:`Unsafe restart at t = ${b.t.toFixed(1)} ms`}: VDD = ${b.vdd.toFixed(2)} V${b.vdd<VMIN?' (below 4.0 V)':''}, clock at ${Math.round(b.amp*100)} % amplitude${b.amp<0.95?' (not settled)':''}. The program can start with corrupted registers or skip instructions.</span></div>`}
+  }
+  // advice
+  const slope0=(VNOM-VPOR)/Math.max(P.rise/3,0.05);
+  if(slope0<0.05&&P.circ!=='a'&&P.circ!=='b')notes.push('The supply rises too slowly for the internal POR. This is exactly the case the datasheet covers with the external RC circuit (b) on MCLR.');
+  if(!P.pwrte&&(P.circ==='none'||P.circ==='c'))notes.push('With PWRTE off and nothing slowing MCLR, only the OST (XT mode) delays the start, and it waits just 1024 clock cycles. Enable <code>_PWRTE_ON</code> to add 72 ms for VDD to settle.');
+  if(P.osc==='RC'&&!P.pwrte)notes.push('RC mode has no oscillator start-up timer, so with PWRTE off the CPU can start almost as soon as VDD passes 1.6 V.');
+  if((P.circ==='a'||P.circ==='b')&&P.R>40)notes.push(`R = ${fmtR(P.R)} is above the 40 kΩ the datasheet recommends: up to 5 µA of MCLR leakage drops ${(ILEAK*P.R).toFixed(2)} V across R${ILEAK*P.R>VNOM*(1-VIHF)?', so MCLR never reaches V<sub>IH</sub> and the chip stays in reset':''}.`);
+  if(P.circ==='a'&&P.scn==='dip')notes.push('Circuit (a) has no diode: C stays charged through a short power cut, so MCLR is already high when power returns and gives no delay. Circuit (b) adds the diode for exactly this reason.');
+  if(P.circ==='b'&&P.scn==='dip')notes.push('The diode in (b) empties C as VDD falls, so the RC delay applies again when power returns.');
+  if(P.scn==='btn'&&P.circ!=='c')notes.push('This circuit has no reset button. Choose circuit (c) to try a manual reset.');
+  if(P.scn==='btn'&&P.circ==='c')notes.push('A reset from MCLR does not restart the power-up or oscillator timers: the CPU restarts as soon as the button is released, with VDD and the clock already stable.');
+  if(R.badRun)notes.push('When the power was switched off, the CPU kept running as VDD fell below 4.0 V until the chip died at about 1.6 V. The PIC16F84A has no brown-out reset, and an RC on MCLR does not detect a falling supply either. That needs a supervisor chip (or a PIC with BOR, such as the 16F877).');
+  if(P.circ==='a'||P.circ==='b')notes.push(`τ = R·C = ${fmtMs(P.R*P.C)}. MCLR crosses 0.85·VDD after roughly 2τ once VDD is up.`);
+  if(notes.length)h+=`<ul class="notes">${notes.map(n=>`<li>${n}</li>`).join('')}</ul>`;
+  v.innerHTML=h;
+  $('#events').innerHTML=R.ev.filter(e=>e.t<=R.T+0.01).map(e=>`<li class="k-${e.k}"><span class="tm">${(e.t).toFixed(e.t<10?2:1)} ms</span><span class="tx">${e.txt}</span></li>`).join('');
+}
+
+/* ---------------- scope drawing ---------------- */
+const cv=$('#scope'),ctx=cv.getContext('2d');
+let R=null,cursorT=0;
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function draw(){
+  if(!R)return;
+  const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+  const C={ink:css('--ink'),muted:css('--muted'),rule:css('--rule'),grid:css('--grid'),vdd:css('--vdd'),mclr:css('--mclr'),osc:css('--osc'),bad:css('--bad'),warn:css('--warn'),ok:css('--ok'),badband:css('--badband'),warnband:css('--warnband'),okband:css('--okband'),panel:css('--panel'),accent:css('--accent'),wire:css('--wire')};
+  const L=128,Rm=14,x0=L,x1=W-Rm,T=R.T;
+  const X=t=>x0+(t/T)*(x1-x0);
+  const idx=t=>Math.min(R.N-1,Math.max(0,Math.round(t/DT)));
+  const tEnd=Math.min(cursorT,T);
+  // lanes
+  const lanes={an:[18,210],osc:[232,312]};
+  const dig=[['POR pulse',1],['PWRT 72 ms',2],['OST 1024 T<sub>OSC</sub>',4],['MCLR ≥ V<sub>IH</sub>',8],['Internal RESET',16],['CPU executing',32]];
+  const dTop=338,dH=24,dGap=8;
+  const axisY=dTop+dig.length*(dH+dGap)+4;
+  ctx.font='600 11.5px "IBM Plex Mono",monospace';ctx.textBaseline='middle';
+  // band shading (whole height of analog + osc)
+  const cols=Math.max(1,Math.floor(x1-x0));
+  for(let c=0;c<cols;c++){
+    const t=(c/cols)*T;if(t>tEnd)break;const i=idx(t);const v=R.A.vdd[i],a=R.A.amp[i];
+    if(t>=TON-0.01||v>0.01){
+      if(v<VMIN){ctx.fillStyle=C.badband;ctx.fillRect(x0+c,lanes.an[0],1.2,lanes.an[1]-lanes.an[0])}
+      if(a<0.95){ctx.fillStyle=C.warnband;ctx.fillRect(x0+c,lanes.osc[0],1.2,lanes.osc[1]-lanes.osc[0])}
+    }
+  }
+  // grid & labels
+  ctx.strokeStyle=C.grid;ctx.lineWidth=1;
+  const step=T<=50?5:T<=100?10:T<=250?25:T<=500?50:100;
+  for(let t=0;t<=T+0.001;t+=step){const x=Math.round(X(t))+.5;ctx.beginPath();ctx.moveTo(x,lanes.an[0]);ctx.lineTo(x,axisY);ctx.stroke()}
+  // analog lane axes
+  const Y=v=>lanes.an[1]-(v/5.5)*(lanes.an[1]-lanes.an[0]);
+  ctx.fillStyle=C.muted;ctx.textAlign='right';
+  for(const v of[0,1,2,3,4,5]){const y=Math.round(Y(v))+.5;ctx.strokeStyle=C.grid;ctx.beginPath();ctx.moveTo(x0,y);ctx.lineTo(x1,y);ctx.stroke();ctx.fillText(v+' V',x0-8,y)}
+  ctx.setLineDash([4,4]);ctx.strokeStyle=C.bad;ctx.beginPath();ctx.moveTo(x0,Y(VMIN)+.5);ctx.lineTo(x1,Y(VMIN)+.5);ctx.stroke();
+  ctx.strokeStyle=C.muted;ctx.beginPath();ctx.moveTo(x0,Y(VPOR)+.5);ctx.lineTo(x1,Y(VPOR)+.5);ctx.stroke();ctx.setLineDash([]);
+  ctx.textAlign='left';ctx.font='500 10.5px "IBM Plex Mono",monospace';ctx.fillStyle=C.bad;ctx.fillText('4.0 V min (4 MHz)',x1-118,Y(VMIN)-8);ctx.fillStyle=C.muted;ctx.fillText('1.6 V POR trip',x1-96,Y(VPOR)-8);
+  ctx.font='600 11.5px "IBM Plex Mono",monospace';ctx.textAlign='left';ctx.fillStyle=C.ink;ctx.fillText('VDD / MCLR',8,lanes.an[0]+8);
+  ctx.fillText('OSC1',8,(lanes.osc[0]+lanes.osc[1])/2);ctx.fillStyle=C.muted;ctx.font='500 10px "IBM Plex Mono",monospace';ctx.fillText('not to scale',8,(lanes.osc[0]+lanes.osc[1])/2+14);
+  // traces
+  const trace=(arr,color,dash)=>{ctx.strokeStyle=color;ctx.lineWidth=2.4;ctx.setLineDash(dash||[]);ctx.beginPath();let first=true;
+    for(let c=0;c<=cols;c++){const t=(c/cols)*T;if(t>tEnd)break;const v=arr[idx(t)];const x=x0+c,y=Y(v);if(first){ctx.moveTo(x,y);first=false}else ctx.lineTo(x,y)}ctx.stroke();ctx.setLineDash([])};
+  if(P.circ!=='none')trace(R.A.m,C.mclr,[7,5]);
+  trace(R.A.vdd,C.vdd);
+  if(P.circ==='none'){ctx.font='500 10.5px "IBM Plex Mono",monospace';ctx.fillStyle=C.mclr;ctx.fillText('MCLR = VDD',x0+6,lanes.an[0]+10)}
+  // oscillator lane
+  const oy=(lanes.osc[0]+lanes.osc[1])/2,oh=(lanes.osc[1]-lanes.osc[0])/2-4;
+  ctx.strokeStyle=C.osc;ctx.lineWidth=1.5;ctx.beginPath();
+  const fpx=0.55;let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647-.5};
+  for(let px=0;px<=cols*2;px++){const t=(px/(cols*2))*T;if(t>tEnd)break;const i=idx(t);const a=R.A.amp[i];
+    const jit=(1-a)*a*4;const ph=px*fpx+jit*rnd()*3;const y=oy-Math.sin(ph)*a*oh*(1+rnd()*jit*0.6);
+    const x=x0+px/2;if(px===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)}
+  ctx.stroke();
+  // digital lanes
+  dig.forEach(([name,bit],k)=>{
+    const y0=dTop+k*(dH+dGap),yH=y0+3,yL=y0+dH-3;
+    ctx.fillStyle=C.ink;ctx.font='600 11.5px "IBM Plex Mono",monospace';ctx.textAlign='left';
+    ctx.fillText(name.replace(/<\/?sub>/g,''),8,y0+dH/2);
+    ctx.strokeStyle=C.rule;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x0,yL+.5);ctx.lineTo(x1,yL+.5);ctx.stroke();
+    const col=bit===16?C.warn:bit===32?C.ok:bit===2||bit===4?C.accent:C.ink;
+    // filled segments
+    let segStart=null;
+    const flush=(c)=>{if(segStart===null)return;const w=Math.max(c-segStart,(bit===1||bit===4)?3:1);ctx.fillStyle=col+'33';ctx.fillRect(x0+segStart,yH,w,yL-yH);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x0+segStart,yL);ctx.lineTo(x0+segStart,yH);ctx.lineTo(x0+segStart+w,yH);ctx.lineTo(x0+segStart+w,yL);ctx.stroke();segStart=null};
+    for(let c=0;c<=cols;c++){const t0=(c/cols)*T,t1=((c+1)/cols)*T;if(t0>tEnd){flush(c);break}
+      let any=false;for(let i=idx(t0);i<=Math.min(idx(t1),R.N-1);i++){if(R.A.flags[i]&bit){any=true;break}}
+      if(any&&segStart===null)segStart=c;if(!any)flush(c)}
+    flush(Math.min(cols,Math.floor(((tEnd)/T)*cols)));
+  });
+  // OST annotation (tiny)
+  const ostIdx=R.ev.find(e=>/OST has counted/.test(e.txt));
+  if(ostIdx&&ostIdx.t<=tEnd){const y0=dTop+2*(dH+dGap);ctx.fillStyle=C.muted;ctx.font='500 10.5px "IBM Plex Mono",monospace';ctx.textAlign='left';ctx.fillText('1024 × 0.25 µs = 0.256 ms',Math.min(X(ostIdx.t)+8,x1-170),y0+dH/2)}
+  // time axis
+  ctx.fillStyle=C.muted;ctx.textAlign='center';ctx.font='500 11px "IBM Plex Mono",monospace';
+  for(let t=0;t<=T+0.001;t+=step){ctx.fillText(t+'',X(t),axisY+10)}
+  ctx.textAlign='right';ctx.fillText('ms',x1,axisY+24);
+  // switch-on marker
+  ctx.strokeStyle=C.ink;ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(X(TON)+.5,lanes.an[0]);ctx.lineTo(X(TON)+.5,axisY);ctx.stroke();ctx.setLineDash([]);
+  ctx.textAlign='left';ctx.fillStyle=C.ink;ctx.font='600 10.5px "IBM Plex Mono",monospace';ctx.fillText('ON',X(TON)+4,lanes.an[0]+10);
+  // run markers
+  R.runStarts.forEach((r,k)=>{if(r.t>tEnd||r.t>T)return;const x=X(r.t)+.5;ctx.strokeStyle=r.healthy?C.ok:C.bad;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,lanes.an[0]);ctx.lineTo(x,axisY);ctx.stroke();
+    ctx.fillStyle=r.healthy?C.ok:C.bad;ctx.font='700 11px "IBM Plex Sans",sans-serif';ctx.textAlign=x>x1-120?'right':'left';ctx.fillText(r.healthy?'CPU starts ✓':'CPU starts ✕',x+(x>x1-120?-6:6),lanes.an[0]+26+(k%3)*15)});
+  // cursor
+  if(cursorT<T){const x=X(cursorT)+.5;ctx.strokeStyle=C.accent;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x,lanes.an[0]);ctx.lineTo(x,axisY);ctx.stroke()}
+}
+
+/* ---------------- schematic ---------------- */
+function hx(c){c=c.replace('#','');if(c.length===3)c=c.split('').map(x=>x+x).join('');return[0,2,4].map(k=>parseInt(c.substr(k,2),16))}
+function vcol(v){const a=Math.max(0,Math.min(1,v/5));const c1=hx(css('--wire')),c2=hx(css('--vdd'));return 'rgb('+c1.map((x,k)=>Math.round(x+(c2[k]-x)*a)).join(',')+')'}
+function schem(t){
+  const i=Math.max(0,Math.min(R.N-1,Math.round(t/DT)));const vdd=R.A.vdd[i],m=R.A.m[i],amp=R.A.amp[i],f=R.A.flags[i];
+  const sc=schedule();const btn=sc.btn.some(([a,b])=>t>=a&&t<b);
+  const rc=P.circ;const showRC=rc==='a'||rc==='b';
+  const vC=vcol(vdd),mC=vcol(m);
+  const vc=showRC?(rc==='b'?m+ (vdd>VPOR?ILEAK*P.R:0):m+(vdd>VPOR?ILEAK*P.R:0)):m;
+  let s='';
+  // VDD rail
+  s+=`<text x="300" y="26" class="lb">VDD</text><text x="342" y="26" class="val" fill="${css('--vdd')}" style="fill:var(--vdd)">${vdd.toFixed(2)} V</text>`;
+  s+=`<path class="wr" stroke="${vC}" d="M${rc==='b'?60:110} 40 H330"/><circle cx="300" cy="40" r="3.5" fill="${vC}"/>`;
+  s+=`<path class="wr" stroke="${vC}" d="M300 40 V92"/>`;
+  // chip
+  s+=`<rect class="chip" x="230" y="92" width="140" height="190" rx="4"/><text x="300" y="128" class="lb" text-anchor="middle">PIC16F84A</text>`;
+  s+=`<text x="300" y="107" class="sm" text-anchor="middle">VDD (14)</text><text x="242" y="166" class="lb">MCLR</text><path d="M242 152 H284" stroke="var(--ink)" stroke-width="1.4"/><text x="242" y="182" class="sm">pin 4</text>`;
+  s+=`<text x="300" y="276" class="sm" text-anchor="middle">VSS (5)</text>`;
+  // osc indicator inside chip
+  const oscTxt=P.osc==='XT'?'XT 4 MHz':'RC osc';
+  s+=`<text x="300" y="214" class="sm" text-anchor="middle">${oscTxt}</text><rect x="252" y="222" width="96" height="10" rx="5" fill="var(--panel)" stroke="var(--rule)"/><rect x="252" y="222" width="${Math.round(96*amp)}" height="10" rx="5" fill="${amp>=0.95?css('--ok'):css('--warn')}"/>`;
+  s+=`<text x="300" y="248" class="sm" text-anchor="middle">clock ${Math.round(amp*100)} %</text>`;
+  // GND rail
+  s+=`<path class="wr" stroke="var(--wire)" d="M300 282 V312 M${rc==='c'?70:110} 312 H300"/><circle cx="${rc==='c'?70:110}" cy="312" r="3.5" fill="var(--wire)"/>`;
+  const gx=rc==='c'?70:110;
+  s+=`<path class="gl" d="M${gx} 312 V322 M${gx-12} 322 H${gx+12} M${gx-8} 328 H${gx+8} M${gx-4} 334 H${gx+4}"/>`;
+  // MCLR wiring per circuit
+  const my=160;
+  if(rc==='none'){
+    s+=`<path class="wr" stroke="${vC}" d="M300 40 H190 M190 40 V${my} H230"/><circle cx="190" cy="40" r="3.5" fill="${vC}"/><text x="140" y="${my-8}" class="sm">tied to VDD</text>`;
+  }else{
+    // R from rail to node
+    s+=`<circle cx="110" cy="40" r="3.5" fill="${vC}"/><path class="wr" stroke="${vC}" d="M110 40 V62"/>`;
+    s+=`<rect class="cmp" x="100" y="62" width="20" height="50" rx="2"/><text x="128" y="92" class="lb">R</text><text x="128" y="106" class="sm">${fmtR(P.R)}</text>`;
+    s+=`<path class="wr" stroke="${mC}" d="M110 112 V${my}"/><circle cx="110" cy="${my}" r="3.5" fill="${mC}"/>`;
+    if(rc==='c'){
+      s+=`<path class="wr" stroke="${mC}" d="M110 ${my} H230"/>`;
+      // button to GND on the left
+      const pressed=btn;
+      s+=`<path class="wr" stroke="${mC}" d="M110 ${my} H96"/><circle cx="92" cy="${my}" r="3" fill="var(--panel)" stroke="var(--ink)" stroke-width="1.8"/><circle cx="70" cy="${my}" r="3" fill="var(--panel)" stroke="var(--ink)" stroke-width="1.8"/>`;
+      s+=`<path class="gl" style="stroke:var(--ink)" d="${pressed?'M66 '+(my-6)+' H96':'M66 '+(my-14)+' H96'} M81 ${pressed?my-6:my-14} V${my-24}"/><text x="58" y="${my-30}" class="sm">reset button${pressed?' · pressed':''}</text>`;
+      s+=`<path class="wr" stroke="var(--wire)" d="M70 ${my+3} V312"/>`;
+    }else{
+      // C from node to GND
+      s+=`<path class="wr" stroke="${mC}" d="M110 ${my} V206"/><path class="gl" d="M92 206 H128 M92 216 H128"/><text x="134" y="216" class="lb">C</text><text x="134" y="230" class="sm">${fmtC(P.C)}</text>`;
+      s+=`<path class="wr" stroke="var(--wire)" d="M110 216 V312"/>`;
+      // charge gauge
+      const q=Math.max(0,Math.min(1,vc/5));
+      s+=`<rect x="70" y="194" width="10" height="34" rx="2" fill="var(--panel)" stroke="var(--rule)"/><rect x="70" y="${194+34*(1-q)}" width="10" height="${34*q}" rx="2" fill="${css('--mclr')}"/><text x="75" y="242" class="sm" text-anchor="middle">${vc.toFixed(1)}V</text>`;
+      if(rc==='b'){
+        // diode from node up to VDD rail (cathode at VDD)
+        const cond=vc>vdd+0.55;
+        s+=`<path class="wr" stroke="${vC}" d="M60 40 V78"/><path class="wr" stroke="${mC}" d="M60 104 V${my} H110"/>`;
+        s+=`<polygon points="48,104 72,104 60,84" fill="${cond?css('--warn'):'var(--panel)'}" stroke="var(--wire)" stroke-width="2"/><path class="gl" d="M48 82 H72"/><circle cx="60" cy="40" r="3.5" fill="${vC}"/>`;
+        s+=`<text x="20" y="96" class="sm">D</text>${cond?'<text x="12" y="128" class="sm" style="fill:var(--warn)">discharging C</text>':''}`;
+        // Rs
+        s+=`<path class="wr" stroke="${mC}" d="M110 ${my} H150"/><rect class="cmp" x="150" y="${my-9}" width="44" height="18" rx="2"/><text x="160" y="${my-16}" class="lb">Rs</text><text x="172" y="${my+26}" class="sm" text-anchor="middle">470 Ω</text><path class="wr" stroke="${mC}" d="M194 ${my} H230"/>`;
+      }else{
+        s+=`<path class="wr" stroke="${mC}" d="M110 ${my} H230"/>`;
+      }
+    }
+  }
+  s+=`<text x="242" y="198" class="val" style="fill:var(--mclr)">${m.toFixed(2)} V</text>`;
+  const thr=VIHF*vdd;s+=`<text x="242" y="146" class="sm">V<tspan dy="3" font-size="9">IH</tspan><tspan dy="-3"> ≈ ${thr.toFixed(2)} V</tspan></text>`;
+  $('#schem').innerHTML=s;
+  // state pill
+  const pill=$('#pill'),st=$('#stateTxt');
+  const alive=f&64;
+  if(vdd<0.05){pill.className='pill off';pill.textContent='OFF';st.textContent='Power is off.'}
+  else if(f&32){const ok=vdd>=VMIN&&amp>=0.95;pill.className='pill '+(ok?'run':'bad');pill.textContent=ok?'RUNNING':'RUNNING · UNSAFE';st.textContent=ok?'Executing code with a healthy supply and a stable clock.':`Executing code with VDD = ${vdd.toFixed(2)} V and the clock at ${Math.round(amp*100)} %: results are unreliable.`}
+  else{pill.className='pill rst';pill.textContent='IN RESET';
+    st.textContent=!alive?`VDD = ${vdd.toFixed(2)} V: too low for the chip to do anything.`:(f&2)?'Held by the power-up timer while VDD settles.':(f&4)?'Held by the oscillator start-up timer, counting 1024 clock cycles.':!(f&8)?'Held because MCLR is still below its input-high threshold.':'Held in reset.'}
+  $('#tRead').innerHTML=`t = <b>${t.toFixed(1)} ms</b> · VDD <b>${vdd.toFixed(2)} V</b> · MCLR <b>${m.toFixed(2)} V</b>`;
+}
+
+/* ---------------- controls ---------------- */
+const NAMES={none:'MCLR tied to VDD',a:'Figure (a): R + C',b:'Figure (b): datasheet circuit',c:'Figure (c): reset button'};
+function seg(id,key,conv){const el=$(id);el.querySelectorAll('button').forEach(b=>{b.addEventListener('click',()=>{P[key]=conv?conv(b.dataset.v):b.dataset.v;sync();rerun(true)})})}
+seg('#circSeg','circ');seg('#pwrtSeg','pwrte',v=>+v);seg('#oscSeg','osc');seg('#scnSeg','scn');
+function slider(id,key){const el=$(id);el.addEventListener('input',()=>{P[key]=logMap(+el.value,...RANGES[key]);sync();rerun(false)})}
+slider('#sRise','rise');slider('#sX','xs');slider('#sR','R');slider('#sC','C');slider('#sOff','off');
+function sync(){
+  for(const [id,key] of [['#circSeg','circ'],['#pwrtSeg','pwrte'],['#oscSeg','osc'],['#scnSeg','scn']])$(id).querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v==String(P[key]))));
+  $('#sRise').value=logInv(P.rise,...RANGES.rise);$('#sX').value=logInv(P.xs,...RANGES.xs);$('#sR').value=logInv(P.R,...RANGES.R);$('#sC').value=logInv(P.C,...RANGES.C);$('#sOff').value=logInv(P.off,...RANGES.off);
+  $('#vRise').textContent=fmtMs(P.rise);$('#vX').textContent=fmtMs(P.xs);$('#vR').textContent=fmtR(P.R);$('#vC').textContent=fmtC(P.C);$('#vOff').textContent=fmtMs(P.off);
+  const slope=(VNOM-VPOR)/Math.max(P.rise/3,0.05);
+  $('#hRise').innerHTML=`Slope at the 1.6 V POR trip ≈ <b>${slope<1?slope.toFixed(3):slope.toFixed(1)} V/ms</b> ${slope<0.05?'· <span style="color:var(--bad)">too slow for the internal POR (needs ≥ 0.05 V/ms)</span>':''}`;
+  $('#hR').innerHTML=P.R>40?'<span style="color:var(--bad)">Above the 40 kΩ the datasheet recommends</span>':'Datasheet: keep R below 40 kΩ.';
+  $('#hC').textContent=`τ = R·C = ${fmtMs(P.R*P.C)}`;
+  const rc=P.circ==='a'||P.circ==='b';
+  $('#slR').classList.toggle('dim',!(rc||P.circ==='c'));$('#slC').classList.toggle('dim',!rc);$('#slX').classList.toggle('dim',P.osc!=='XT');
+  $('#sC').disabled=!rc;$('#sR').disabled=!(rc||P.circ==='c');$('#sX').disabled=P.osc!=='XT';
+  $('#slOff').hidden=P.scn!=='dip';
+  $('#circName').textContent=NAMES[P.circ];
+}
+const PRESETS=[
+  ['Datasheet minimum: MCLR to VDD, PWRTE on',{circ:'none',pwrte:1,osc:'XT',rise:20,xs:8,scn:'on'}],
+  ['No protection at all',{circ:'none',pwrte:0,osc:'RC',rise:20,scn:'on'}],
+  ['Crystal only (PWRTE off)',{circ:'none',pwrte:0,osc:'XT',rise:30,xs:6,scn:'on'}],
+  ['Very slow supply',{circ:'none',pwrte:1,osc:'XT',rise:300,xs:8,scn:'on'}],
+  ['Slow supply fixed by RC',{circ:'b',pwrte:1,osc:'XT',rise:300,R:10,C:22,scn:'on'}],
+  ['Power glitch: (a) without the diode',{circ:'a',pwrte:0,osc:'XT',rise:10,R:10,C:4.7,scn:'dip',off:15}],
+  ['Power glitch: (b) with the diode',{circ:'b',pwrte:0,osc:'XT',rise:10,R:10,C:4.7,scn:'dip',off:15}],
+  ['R too large (180 kΩ)',{circ:'b',pwrte:1,osc:'XT',rise:20,R:180,C:1,scn:'on'}],
+  ['Manual reset button',{circ:'c',pwrte:1,osc:'XT',rise:20,R:10,scn:'btn'}]
+];
+PRESETS.forEach(([n,o])=>{const b=document.createElement('button');b.type='button';b.className='chipbtn';b.textContent=n;b.addEventListener('click',()=>{Object.assign(P,o);sync();rerun(true)});$('#presets').appendChild(b)});
+
+/* ---------------- play ---------------- */
+let raf=null,playStart=0;
+const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function setCursor(t){t=Math.max(0,t||0);cursorT=t;$('#cursor').value=Math.round(1000*Math.min(t,R.T)/R.T);draw();schem(Math.min(t,R.T))}
+function play(){
+  if(raf)cancelAnimationFrame(raf);
+  if(reduce){setCursor(R.T);return}
+  const dur=6500;playStart=performance.now();$('#playBtn').textContent='■ Stop';
+  const tick=now=>{const k=Math.max(0,Math.min(1,(now-playStart)/dur));setCursor(k*R.T);if(k<1)raf=requestAnimationFrame(tick);else{raf=null;$('#playBtn').textContent='▶ Replay power-up'}};
+  raf=requestAnimationFrame(tick);
+}
+$('#playBtn').addEventListener('click',()=>{if(raf){cancelAnimationFrame(raf);raf=null;$('#playBtn').textContent='▶ Replay power-up';setCursor(R.T)}else play()});
+$('#cursor').addEventListener('input',e=>{if(raf){cancelAnimationFrame(raf);raf=null;$('#playBtn').textContent='▶ Replay power-up'}setCursor(+e.target.value/1000*R.T)});
+let rerunTimer=null;
+function rerun(animate){
+  R=simulate();verdict(R);
+  if(raf){cancelAnimationFrame(raf);raf=null;$('#playBtn').textContent='▶ Replay power-up'}
+  if(animate)play();else{clearTimeout(rerunTimer);setCursor(R.T)}
+}
+window.addEventListener('resize',()=>draw());
+if(window.matchMedia)window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{draw();schem(Math.min(cursorT,R.T))});
+new MutationObserver(()=>{draw();schem(Math.min(cursorT,R.T))}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+sync();R=simulate();verdict(R);setCursor(R.T);
+})();
+</script>
+
+</html>
