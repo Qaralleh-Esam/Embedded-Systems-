@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Interactive PIC16F84A port-pin lab: type instructions and watch the data latch, TRIS latch, tri-state buffers, switch and LED respond phase by phase.">
+<meta name="author" content="Esam A. Al-Qaralleh">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>PIC16F84A I/O Pin Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: lab-bench instrument. Schematic is the hero (left), live pin + register state at right,
+   command line and the Q1–Q4 micro-operation trace underneath. */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --panel-2:#f6f8fa; --ink:#132033; --muted:#5a6879; --rule:#d5dce4;
+  --wire:#3b4a5e; --hi:#d9480f; --lo:#1971c2; --z:#98a3b1; --x:#9c36b5; --glow:#f59f00; --accent:#0b5cad; --led:#2fb344;
+  --warn-bg:#fff4e0; --warn-ink:#8a4b00; --err-ink:#b42318; --ok:#2b8a3e;
+  --display:'IBM Plex Sans Condensed','Arial Narrow',system-ui,sans-serif;
+  --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0e131a; --panel:#151c26; --panel-2:#1b2431; --ink:#e4eaf2; --muted:#93a1b3; --rule:#2a3546;
+  --wire:#8a9ab0; --hi:#ff7b47; --lo:#4dabf7; --z:#66727f; --x:#da77f2; --glow:#ffc53d; --accent:#6cb2ff; --led:#51cf66;
+  --warn-bg:#2d2310; --warn-ink:#ffc96b; --err-ink:#ff8a80; --ok:#69db7c; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0e131a; --panel:#151c26; --panel-2:#1b2431; --ink:#e4eaf2; --muted:#93a1b3; --rule:#2a3546;
+  --wire:#8a9ab0; --hi:#ff7b47; --lo:#4dabf7; --z:#66727f; --x:#da77f2; --glow:#ffc53d; --accent:#6cb2ff; --led:#51cf66;
+  --warn-bg:#2d2310; --warn-ink:#ffc96b; --err-ink:#ff8a80; --ok:#69db7c; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);-webkit-font-smoothing:antialiased}
+.app{max-width:1320px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:.005em}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:16px}
+.kicker{font:600 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+.top h1{font-size:clamp(28px,4vw,38px);font-weight:700;line-height:1}
+.top h1 span{color:var(--accent)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font:500 12.5px var(--mono);color:var(--muted)}
+.legend i{display:inline-block;width:22px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}
+.lg1{border-color:var(--hi)!important}.lg0{border-color:var(--lo)!important}.lgz{border-color:var(--z)!important;border-top-style:dashed!important}.lgx{border-color:var(--x)!important;border-top-style:dotted!important}.lga{border-color:var(--glow)!important;box-shadow:0 0 6px var(--glow)}
+
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 430px;gap:16px;align-items:start}
+.col{display:grid;gap:16px;align-content:start;min-width:0}
+.o-pins .ports{grid-template-columns:minmax(0,5fr) minmax(0,8fr);align-items:start}
+.o-pins .ports .hint{grid-column:1/-1}
+.o-pins .pins.a{grid-template-columns:repeat(5,minmax(0,1fr))}
+.o-cli .log{height:430px}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;min-width:0}
+.card-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:12px 16px;border-bottom:1px solid var(--rule)}
+.card-h h2{font-size:19px;font-weight:600}
+.card-h h2 .pn{font-family:var(--mono);font-weight:600;color:var(--accent)}
+.sub{font:500 11.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+
+/* phase strip */
+.phases{display:flex;gap:4px}
+.phases span{font:600 12px/1 var(--mono);padding:6px 9px;border-radius:5px;border:1px solid var(--rule);color:var(--muted);background:var(--panel-2)}
+.phases span.on{background:var(--glow);border-color:var(--glow);color:#1b1200}
+
+/* schematic */
+.svgwrap{overflow-x:auto;padding:6px 8px 0}
+#sch{display:block;width:100%;min-width:720px;height:auto}
+#sch text{font-family:var(--mono);fill:var(--ink)}
+#sch .lb{font-size:12.5px;font-weight:600;letter-spacing:.04em}
+#sch .ttl{font-size:11.5px;fill:var(--muted);font-family:var(--body)}
+#sch .pinlbl{font-size:13px;font-weight:600}
+#sch .sm{font-size:11px;fill:var(--muted)}
+#sch .na{font-size:10.5px;fill:var(--muted);font-style:italic}
+.w{fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;transition:stroke .25s,stroke-width .2s}
+.v1{stroke:var(--hi)}.v0{stroke:var(--lo)}.vz{stroke:var(--z);stroke-dasharray:5 5}.vx{stroke:var(--x);stroke-dasharray:2 5}
+.vidle{stroke:var(--wire);opacity:.55}.voff{stroke:var(--wire);opacity:.22}
+.w.act{stroke-width:4.2}
+.flow{fill:none;stroke:var(--glow);stroke-width:2.4;stroke-linecap:round;stroke-dasharray:2 11;animation:flow .6s linear infinite;pointer-events:none}
+.flow.rev{animation-direction:reverse}
+.halo{fill:none;stroke:var(--glow);stroke-width:10;stroke-linecap:round;stroke-linejoin:round;opacity:.28;pointer-events:none}
+@keyframes flow{to{stroke-dashoffset:-13}}
+.comp{fill:var(--panel);stroke:var(--wire);stroke-width:2.2;stroke-linejoin:round;transition:fill .25s,stroke .25s}
+.comp.on{fill:color-mix(in srgb,var(--glow) 22%,var(--panel));stroke:var(--glow)}
+.comp.dis{stroke-dasharray:4 4;opacity:.6}
+.comp.fire{animation:fire .9s ease-out}
+@keyframes fire{0%{fill:var(--glow)}100%{fill:var(--panel)}}
+.ff{fill:var(--panel-2);stroke:var(--wire);stroke-width:2.2}
+.ff.fire{animation:fire .9s ease-out}
+.glyph{fill:none;stroke:var(--wire);stroke-width:1.8;stroke-linejoin:round}
+.pulse{fill:none;stroke:var(--wire);stroke-width:1.6;opacity:.45}
+.pulse.on{stroke:var(--glow);opacity:1;stroke-width:2.4}
+.badge rect{stroke:none}
+.badge text{font-size:11px!important;font-weight:600;text-anchor:middle;fill:#fff!important}
+.b1 rect{fill:var(--hi)}.b0 rect{fill:var(--lo)}.bz rect{fill:var(--z)}.bx rect{fill:var(--x)}.bidle rect{fill:var(--rule)}.bidle text{fill:var(--muted)!important}
+.clk{cursor:pointer}
+.clk .hit{fill:transparent;stroke:none}
+.clk:hover .hit,.clk:focus-visible .hit{fill:color-mix(in srgb,var(--accent) 10%,transparent);stroke:var(--accent);stroke-width:1.2;stroke-dasharray:3 3}
+.clk:focus{outline:none}
+.jpin{fill:var(--panel);stroke:var(--ink);stroke-width:1.8}
+.jbar{stroke:var(--ink);stroke-width:4;stroke-linecap:round}
+.lever{stroke:var(--ink);stroke-width:2.6;stroke-linecap:round;fill:none;transition:d .2s}
+.ledb{fill:var(--panel);stroke:var(--wire);stroke-width:2;transition:fill .25s}
+.ledglow{fill:var(--led);opacity:0;transition:opacity .25s}
+.rays{fill:none;stroke:var(--wire);stroke-width:1.6;stroke-linecap:round;opacity:.35}
+#led.on .ledb{fill:var(--led);stroke:var(--led)}#led.on .ledglow{opacity:.38}#led.on .rays{stroke:var(--led);opacity:1}
+#led.nc{opacity:.3}
+#led.faint .ledb{fill:color-mix(in srgb,var(--led) 35%,var(--panel))}#led.faint .ledglow{opacity:.1}
+.pin-sq{fill:var(--panel);stroke:var(--ink);stroke-width:2}
+@media (prefers-reduced-motion: reduce){.flow{animation:none;stroke-dasharray:none;opacity:.7}.comp.fire,.ff.fire{animation:none}}
+
+.caption{display:flex;gap:12px;align-items:flex-start;padding:12px 16px 14px;border-top:1px solid var(--rule);min-height:64px}
+.caption .ph{flex:none;font:600 12px/1 var(--mono);padding:6px 8px;border-radius:5px;background:var(--glow);color:#1b1200;margin-top:1px}
+.caption .ph.idle{background:var(--panel-2);color:var(--muted);border:1px solid var(--rule)}
+.caption p{margin:0;max-width:78ch}
+.caption code,.log code{font-family:var(--mono);font-size:.92em}
+
+/* side: pins + registers */
+.side{display:grid;gap:16px;min-width:0}
+.ports{padding:12px 14px 14px;display:grid;gap:14px}
+.port h3{font:600 12px var(--mono);letter-spacing:.1em;color:var(--muted);margin-bottom:6px;display:flex;justify-content:space-between}
+.pins{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px}
+.pins.a{grid-template-columns:repeat(8,minmax(0,1fr))}
+.pin{display:grid;gap:3px;justify-items:center;padding:6px 2px 5px;border:1px solid var(--rule);border-radius:6px;background:var(--panel-2);cursor:pointer;min-width:0}
+.pin:hover{border-color:var(--accent)}
+.pin.sel{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:color-mix(in srgb,var(--accent) 9%,var(--panel))}
+.pin .nm{font:600 11.5px var(--mono)}
+.pin .dir{font:600 9.5px var(--mono);letter-spacing:.06em;color:var(--muted)}
+.pin .dir.out{color:var(--accent)}
+.lvl{display:block;width:100%;max-width:30px;height:8px;border-radius:4px;background:var(--rule)}
+.lvl.l1{background:var(--hi)}.lvl.l0{background:var(--lo)}.lvl.lz{background:repeating-linear-gradient(90deg,var(--z) 0 4px,transparent 4px 7px)}.lvl.lx{background:repeating-linear-gradient(90deg,var(--x) 0 2px,transparent 2px 5px)}
+.ext{font:600 9.5px var(--mono);border:1px solid var(--rule);background:var(--panel);border-radius:4px;padding:2px 3px;cursor:pointer;width:100%;max-width:38px}
+.ext:hover{border-color:var(--accent)}
+.pin .warn{font-size:10px;color:var(--warn-ink);line-height:1;min-height:10px}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+
+.regs{padding:6px 14px 14px;overflow-x:auto}
+.regs table{border-collapse:collapse;width:100%;font:12.5px var(--mono);font-variant-numeric:tabular-nums}
+.regs th{text-align:left;font-weight:600;padding:6px 6px 6px 0;white-space:nowrap}
+.regs th small{display:block;font-weight:400;color:var(--muted);font-size:10.5px}
+.regs td{padding:3px 0}
+.bits{display:grid;grid-template-columns:repeat(8,1fr);gap:2px}
+.bit{display:grid;place-items:center;height:22px;border-radius:3px;background:var(--panel-2);border:1px solid var(--rule);font-weight:600;font-size:11.5px;position:relative}
+.bit.one{background:color-mix(in srgb,var(--hi) 18%,var(--panel));border-color:color-mix(in srgb,var(--hi) 45%,var(--rule))}
+.bit.unk{color:var(--x)}
+.bit.na{opacity:.35}
+.bit.chg{box-shadow:0 0 0 2px var(--glow)}
+.bitnames{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;font-size:9px;color:var(--muted);text-align:center;margin-top:1px}
+.hex{color:var(--muted);padding-left:8px;white-space:nowrap}
+
+/* CLI */
+.cli .ctrls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ctrls label{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+select,.btn{border:1px solid var(--rule);background:var(--panel-2);border-radius:6px;padding:5px 10px;font-size:13px;cursor:pointer}
+.btn:hover,select:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn[disabled]{opacity:.45;cursor:default}
+.log{height:300px;overflow-y:auto;padding:12px 16px;font:13px/1.55 var(--mono);background:var(--panel-2);border-bottom:1px solid var(--rule)}
+.entry{padding:8px 0;border-bottom:1px dashed var(--rule)}
+.entry:last-child{border-bottom:0}
+.entry .cmd{color:var(--accent);font-weight:600}
+.entry .cmd::before{content:"PIC> ";color:var(--muted);font-weight:400}
+.entry .enc{color:var(--muted)}
+.entry ul{margin:4px 0 0;padding-left:18px}
+.entry li{margin:1px 0}
+.entry .w8{background:var(--warn-bg);color:var(--warn-ink);border-radius:5px;padding:5px 8px;margin-top:5px;font-family:var(--body);font-size:13px}
+.entry .er{color:var(--err-ink)}
+.entry .nt{color:var(--muted);font-family:var(--body);font-size:13px}
+.entry.sys{color:var(--muted);font-family:var(--body);font-size:13.5px}
+.entry.sys b{color:var(--ink)}
+.entry table{border-collapse:collapse;margin-top:4px;font-size:12.5px}
+.entry td{padding:1px 14px 1px 0;vertical-align:top}
+form.prompt{display:flex;gap:8px;align-items:center;padding:10px 16px}
+form.prompt span{font:600 14px var(--mono);color:var(--muted)}
+#cli{flex:1;min-width:0;border:1px solid var(--rule);background:var(--panel-2);border-radius:6px;padding:8px 10px;font:14px var(--mono)}
+/* terminal: always black with white text */
+.log{background:#000;color:#f1f3f5;border-bottom:1px solid #000;scrollbar-color:#444 #000}
+.log .entry{border-bottom-color:#2e2e2e}
+.log .entry .cmd{color:#ffffff}
+.log .entry .cmd::before{color:#8c8c8c}
+.log .entry .enc{color:#9a9a9a}
+.log .entry .nt,.log .entry.sys{color:#bdbdbd}
+.log .entry.sys b{color:#ffffff}
+.log .entry .er{color:#ff8a80}
+.log .entry .w8{background:#2a2108;color:#ffd27a}
+.log code{color:#ffffff}
+form.prompt{background:#000;border-bottom:1px solid var(--rule)}
+form.prompt span{color:#8c8c8c}
+#cli{background:#000;color:#ffffff;border-color:#3a3a3a;caret-color:#ffffff}
+#cli::placeholder{color:#6f6f6f}
+#cli:focus-visible{outline-color:#6cb2ff}
+.examples{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 14px}
+.examples .sub{width:100%;margin-bottom:2px}
+.chip{border:1px solid var(--rule);background:var(--panel);border-radius:999px;padding:4px 11px;font-size:12.5px;cursor:pointer}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+
+
+@media (max-width:1080px){.grid{grid-template-columns:1fr}.col{display:contents}
+  .o-schem{order:1}.o-cli{order:2}.o-pins{order:3}.o-regs{order:4}.o-cli .log{height:300px}}
+@media (max-width:720px){.o-pins .ports{grid-template-columns:1fr}.o-cli .log{height:260px}}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div>
+      <p class="kicker">PIC16F84A · port I/O, one bit at a time</p>
+      <h1>I/O Pin <span>Lab</span></h1>
+    </div>
+    <div class="legend" aria-label="Signal colour key">
+      <span><i class="lg1"></i>logic 1</span><span><i class="lg0"></i>logic 0</span><span><i class="lgz"></i>Hi-Z / floating</span><span><i class="lgx"></i>unknown (x)</span><span><i class="lga"></i>signal firing now</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <div class="col col-l">
+      <section class="card schem o-schem" aria-labelledby="schTitle">
+        <div class="card-h">
+          <h2 id="schTitle">Pin circuit · <span class="pn" id="pinTitle">RB0</span></h2>
+          <div class="phases" id="phases" aria-label="Instruction cycle phase"><span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span></div>
+        </div>
+        <div class="svgwrap">
+          <svg id="sch" viewBox="0 0 950 630" role="img" aria-label="Block diagram of one PIC port pin: data latch, TRIS latch, output tri-state buffer, input buffer, input latch and read buffers">
+            <g id="halos"></g>
+            <!-- data bus -->
+            <text x="40" y="26" class="lb">DATA BUS bit <tspan id="busBit">0</tspan></text>
+            <text x="40" y="58" class="sm">to / from W and ALU</text>
+            <path id="w-bus" class="w" d="M40 40 H170 V480"/>
+
+            <!-- Read LAT (not on 16F84A) -->
+            <text x="40" y="94" class="lb" opacity=".55">RD LAT</text>
+            <path id="w-rdlat-en" class="w voff" d="M40 100 H320 V82"/>
+            <polygon id="b-rdlat" class="comp dis" points="300,70 340,52 340,88"/>
+            <path id="w-rdlat-out" class="w voff" d="M300 70 H170"/>
+            <text x="350" y="44" class="na">Read-LAT path: PIC18 only. The 16F84A has no LAT register.</text>
+
+            <!-- data latch -->
+            <text x="356" y="108" class="ttl" text-anchor="middle">Data latch (PORT)</text>
+            <path id="w-dD" class="w" d="M170 135 H320"/>
+            <rect id="ff-data" class="ff" x="320" y="115" width="72" height="100" rx="3"/>
+            <text x="327" y="140" class="lb">D</text><text x="385" y="140" class="lb" text-anchor="end">Q</text><text x="334" y="200" class="lb">CK</text>
+            <path class="glyph" d="M320 188 L329 195 L320 202"/>
+            <circle class="comp" cx="315" cy="195" r="4.5"/>
+            <text x="40" y="187" class="lb">WR PORT</text>
+            <path id="p-wrport" class="pulse" d="M112 200 h8 v-10 h10 v10 h8"/>
+            <path id="w-wrport" class="w" d="M40 195 H310"/>
+            <path id="w-dQ" class="w" d="M392 135 H470 M440 135 V70 H340"/>
+
+            <!-- output buffer -->
+            <text x="491" y="104" class="ttl" text-anchor="middle">Output buffer</text>
+            <polygon id="b-out" class="comp" points="470,113 470,157 512,135"/>
+            <text id="outState" x="500" y="186" class="sm">Hi-Z</text>
+            <text id="odNote" x="500" y="202" class="sm" display="none">open-drain (N-channel only)</text>
+            <circle id="oeBubble" class="comp" cx="491" cy="151" r="4.5"/>
+            <path id="w-out" class="w" d="M512 135 H660"/>
+
+            <!-- pin, pull-up, external source -->
+            <g id="pullup">
+              <path id="w-pullup" class="w voff" d="M660 135 V104 l-6 -3 l12 -6 l-12 -6 l12 -6 l-6 -3 V66"/>
+              <path class="glyph" d="M648 66 H672"/>
+              <text x="676" y="70" class="sm">VDD</text>
+              <text id="puLbl" x="672" y="98" class="sm">weak pull-up (RBPU)</text>
+            </g>
+            <path id="w-pin" class="w" d="M660 135 H693 M660 135 V480 H612"/>
+            <circle cx="660" cy="135" r="3.5" fill="var(--wire)"/>
+            <rect class="pin-sq" x="693" y="128" width="14" height="14"/>
+            <path class="glyph" d="M693 128 L707 142 M707 128 L693 142" style="stroke:var(--ink)"/>
+            <text id="pinName" x="700" y="118" class="pinlbl" text-anchor="middle">RB0</text>
+            <text id="pinLvl" x="700" y="162" class="sm" text-anchor="middle">floating</text>
+            <!-- external circuit: J1 selects ONE device: switch (input device) or LED (output device) -->
+            <path id="w-pnet" class="w" d="M707 135 H748"/>
+            <path id="w-led" class="w" d="M752 171 V232 l6 3 l-12 6 l12 6 l-12 6 l12 6 l-12 6 l6 3 V300"/>
+            <text x="764" y="256" class="sm">330 Ω</text>
+            <g id="led">
+              <circle class="ledglow" cx="752" cy="312" r="24"/>
+              <polygon class="ledb" points="740,300 764,300 752,322"/>
+              <path class="glyph" d="M739 323 H765"/>
+              <path class="rays" d="M769 307 l11 -7 m-5 0 h5 v5 M769 317 l11 -7 m-5 0 h5 v5"/>
+            </g>
+            <path class="glyph" d="M752 323 V350 M740 350 H764 M744 356 H760 M749 362 H755"/>
+            <text id="ledLbl" x="712" y="390" class="sm">LED off</text>
+            <text x="768" y="117" class="lb" text-anchor="middle">J1</text>
+            <text x="792" y="152" class="sm">SW</text>
+            <text x="760" y="186" class="sm">LED</text>
+            <g id="j1" class="clk" tabindex="0" role="button" aria-label="Selector J1: connect the pin to the switch or to the LED">
+              <rect class="hit" x="740" y="122" width="56" height="56" rx="6"/>
+              <path id="j1Lever" class="lever" d="M752 135 L784 135"/>
+              <circle class="jpin" cx="752" cy="135" r="3.5"/><circle class="jpin" cx="784" cy="135" r="3.5"/><circle class="jpin" cx="752" cy="167" r="3.5"/>
+            </g>
+            <path id="w-ext" class="w" d="M788 135 H812 l3 -6 l6 12 l6 -12 l6 12 l6 -12 l6 12 l3 -6 H880"/>
+            <text x="830" y="120" class="sm" text-anchor="middle">470 Ω</text>
+            <path id="w-sw" class="w" d="M880 135 V112 l-6 -3 l12 -6 l-12 -6 l12 -6 l-6 -3 V74 M880 135 V172"/>
+            <circle cx="880" cy="135" r="3.5" fill="var(--wire)"/>
+            <path class="glyph" d="M866 74 H894"/><text x="898" y="78" class="sm">VDD</text>
+            <text x="890" y="102" class="sm">10 kΩ</text>
+            <g id="sw" class="clk" tabindex="0" role="button" aria-label="Press or release the switch">
+              <rect class="hit" x="808" y="164" width="104" height="80" rx="6"/>
+              <circle class="jpin" cx="880" cy="176" r="3.5"/><circle class="jpin" cx="880" cy="206" r="3.5"/>
+              <path id="swLever" class="lever" d="M880 206 L900 182"/>
+              <path class="glyph" d="M880 210 V224 M868 224 H892 M872 230 H888 M877 236 H883"/>
+              <text x="866" y="196" class="lb" text-anchor="end">SW</text>
+              <text id="swState" x="866" y="212" class="sm" text-anchor="end">released</text>
+            </g>
+            <text x="872" y="284" class="sm" text-anchor="middle">click J1: SW or LED</text>
+
+            <!-- TRIS section -->
+            <text x="40" y="284" class="lb">RD TRIS</text>
+            <path id="p-rdtris" class="pulse" d="M112 297 h8 v-10 h10 v10 h8"/>
+            <path id="w-rdtris-en" class="w" d="M40 290 H320 V272"/>
+            <polygon id="b-rdtris" class="comp" points="300,260 340,242 340,278"/>
+            <path id="w-rdtris-out" class="w" d="M300 260 H170"/>
+            <text x="356" y="308" class="ttl" text-anchor="middle">TRIS latch</text>
+            <path id="w-trisD" class="w" d="M170 335 H320"/>
+            <rect id="ff-tris" class="ff" x="320" y="315" width="72" height="100" rx="3"/>
+            <text x="327" y="340" class="lb">D</text><text x="385" y="340" class="lb" text-anchor="end">Q</text><text x="334" y="400" class="lb">CK</text>
+            <path class="glyph" d="M320 388 L329 395 L320 402"/>
+            <circle class="comp" cx="315" cy="395" r="4.5"/>
+            <text x="40" y="387" class="lb">WR TRIS</text>
+            <path id="p-wrtris" class="pulse" d="M112 400 h8 v-10 h10 v10 h8"/>
+            <path id="w-wrtris" class="w" d="M40 395 H310"/>
+            <path id="w-trisQ" class="w" d="M392 335 H491 V156 M450 335 V260 H340"/>
+            <text x="500" y="250" class="sm">OE (active-low)</text>
+
+            <!-- input section -->
+            <text id="inType" x="591" y="448" class="ttl" text-anchor="middle">TTL input buffer</text>
+            <polygon id="b-in" class="comp" points="570,480 612,458 612,502"/>
+            <path id="hyst" class="glyph" d="M583 488 h7 v-14 h8 M590 488 h8 v-14" display="none"/>
+            <path id="w-sch" class="w" d="M570 480 H472"/>
+            <text x="436" y="453" class="ttl" text-anchor="middle">Input latch (transparent)</text>
+            <rect id="ff-in" class="ff" x="400" y="460" width="72" height="100" rx="3"/>
+            <text x="465" y="485" class="lb" text-anchor="end">D</text><text x="406" y="485" class="lb">Q</text><text x="465" y="545" class="lb" text-anchor="end">EN</text>
+            <path id="w-syncQ" class="w" d="M400 480 H322"/>
+            <polygon id="b-rdport" class="comp" points="280,480 322,458 322,502"/>
+            <path id="w-rdport-out" class="w" d="M280 480 H170"/>
+            <text x="40" y="592" class="lb">RD PORT</text>
+            <path id="p-rdport" class="pulse" d="M112 605 h8 v-10 h10 v10 h8"/>
+            <path id="w-rdport" class="w" d="M40 600 H350 M300 600 V491"/>
+            <polygon id="b-inv" class="comp" points="350,586 350,614 376,600"/>
+            <circle class="comp" cx="380.5" cy="600" r="4.5"/>
+            <path id="w-inv" class="w" d="M385 600 H500 V540 H472"/>
+            <text id="enState" x="508" y="578" class="sm">EN = 1 · transparent</text>
+
+            <g id="flows"></g>
+            <g id="badges"></g>
+          </svg>
+        </div>
+        <div class="caption" aria-live="polite"><span class="ph idle" id="capPh">RESET</span><p id="caption"></p></div>
+      </section>
+      <section class="card o-pins" aria-labelledby="pinsTitle">
+        <div class="card-h"><h2 id="pinsTitle">Pins</h2><span class="sub">click a pin to inspect it</span></div>
+        <div class="ports">
+          <div class="port"><h3><span>PORTA · RA4–RA0</span><span>EXT</span></h3><div class="pins a" id="pinsA"></div></div>
+          <div class="port"><h3><span>PORTB · RB7–RB0</span><span>EXT</span></h3><div class="pins" id="pinsB"></div></div>
+          <p class="hint">Selector <b>J1</b> wires each pin to <b>one</b> device: a push-button <b>switch</b> (input device: 10 kΩ pull-up, 470 Ω to the pin) or an <b>LED</b> (output device: 330 Ω to GND). The board starts with switches on PORTA and LEDs on PORTB. <b>EXT</b>: SW·HI = switch released · SW·LO = pressed · LED. Click J1 or SW in the circuit, or EXT here.</p>
+        </div>
+      </section>
+    </div>
+    <div class="col col-r">
+      <section class="card cli o-cli" aria-labelledby="cliTitle">
+        <div class="card-h">
+          <h2 id="cliTitle">Command line</h2>
+          <div class="ctrls">
+            <label for="speed">Speed <select id="speed"><option value="1700">Slow</option><option value="950" selected>Normal</option><option value="420">Fast</option><option value="0">Instant</option></select></label>
+            <label for="stepMode"><input type="checkbox" id="stepMode"> Step by hand</label>
+            <button class="btn primary" id="nextBtn" type="button" disabled>Next step ›</button>
+            <button class="btn" id="replayBtn" type="button" disabled>Replay</button>
+            <button class="btn" id="resetBtn" type="button">Reset chip</button>
+          </div>
+        </div>
+        <div class="log" id="log" aria-live="polite"></div>
+        <form class="prompt" id="cliForm" autocomplete="off">
+          <span aria-hidden="true">PIC&gt;</span>
+          <input id="cli" type="text" spellcheck="false" aria-label="Instruction" placeholder="e.g. BSF STATUS,RP0   ·   type help">
+          <button class="btn primary" type="submit">Run</button>
+        </form>
+        <div class="examples" id="examples"><span class="sub">Guided examples</span></div>
+      </section>
+      <section class="card o-regs" aria-labelledby="regTitle">
+        <div class="card-h"><h2 id="regTitle">Registers</h2><span class="sub">bank <span id="bankNo">0</span></span></div>
+        <div class="regs"><table id="regTable"></table></div>
+      </section>
+    </div>
+
+
+
+  </main>
+</div>
+
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+const hex2=v=>'0x'+(v&255).toString(16).toUpperCase().padStart(2,'0');
+const hex4=v=>'0x'+v.toString(16).toUpperCase().padStart(4,'0');
+const bin8=v=>(v&255).toString(2).padStart(8,'0');
+const bin14=v=>{const s=v.toString(2).padStart(14,'0');return s.slice(0,2)+' '+s.slice(2,6)+' '+s.slice(6,10)+' '+s.slice(10)};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clone=o=>JSON.parse(JSON.stringify(o));
+const NPIN={A:5,B:8};
+
+/* ---------------- chip state ---------------- */
+function powerOn(){return{W:0,STATUS:0x18,OPTION:0xFF,TRIS:{A:0x1F,B:0xFF},LAT:{A:['x','x','x','x','x'],B:['x','x','x','x','x','x','x','x']},
+  EXT:{A:['1','1','1','1','1'],B:['Z','Z','Z','Z','Z','Z','Z','Z']},CONN:{A:['SW','SW','SW','SW','SW'],B:['LED','LED','LED','LED','LED','LED','LED','LED']},PRS:{A:[0,0,0,0,0],B:[0,0,0,0,0,0,0,0]},GPR:new Array(68).fill(0),MISC:{}}}
+let S=powerOn();
+let view={port:'B',bit:0};
+const rp0=st=>(st.STATUS>>5)&1;
+
+const SFR={INDF:0x00,TMR0:0x01,PCL:0x02,STATUS:0x03,FSR:0x04,PORTA:0x05,PORTB:0x06,EEDATA:0x08,EEADR:0x09,PCLATH:0x0A,INTCON:0x0B,
+  OPTION_REG:0x81,OPTION:0x81,TRISA:0x85,TRISB:0x86,EECON1:0x88,EECON2:0x89};
+const BANK0={0:'INDF',1:'TMR0',2:'PCL',3:'STATUS',4:'FSR',5:'PORTA',6:'PORTB',8:'EEDATA',9:'EEADR',10:'PCLATH',11:'INTCON'};
+const BANK1={0:'INDF',1:'OPTION_REG',2:'PCL',3:'STATUS',4:'FSR',5:'TRISA',6:'TRISB',8:'EECON1',9:'EECON2',10:'PCLATH',11:'INTCON'};
+const MIRRORED=new Set([0,2,3,4,10,11]);
+const BITSYM={C:0,DC:1,Z:2,PD:3,NOT_PD:3,TO:4,NOT_TO:4,RP0:5,RP1:6,IRP:7,RBPU:7,NOT_RBPU:7,INTEDG:6,T0CS:5,T0SE:4,PSA:3,PS2:2,PS1:1,PS0:0,
+  GIE:7,EEIE:6,T0IE:5,INTE:4,RBIE:3,T0IF:2,INTF:1,RBIF:0};
+for(let i=0;i<8;i++)BITSYM['RB'+i]=i; for(let i=0;i<5;i++)BITSYM['RA'+i]=i;
+
+function regName(addr){const f=addr&0x7F,b=addr>>7;if(f>=0x0C&&f<=0x4F)return'GPR';return(b?BANK1:BANK0)[f]||null}
+const isPort=n=>n==='PORTA'||n==='PORTB', isTris=n=>n==='TRISA'||n==='TRISB';
+
+function pinInfo(st,port,i){
+  const t=(st.TRIS[port]>>i)&1,l=st.LAT[port][i],e=st.EXT[port][i];
+  const od=port==='A'&&i===4;
+  const pu=port==='B'&&!(st.OPTION&0x80)&&t===1;
+  let drv='Z';
+  if(t===0)drv=od?(l===0?0:(l==='x'?'x':'Z')):l;
+  let level,src;
+  if(drv!=='Z'){level=drv;src='pic'}
+  else if(e!=='Z'){level=+e;src='ext'}
+  else if(pu){level=1;src='pullup'}
+  else{level='Z';src='float'}
+  const fight=drv!=='Z'&&drv!=='x'&&e!=='Z'&&+e!==drv;
+  return{t,l,e,od,pu,drv,level,src,fight,conn:st.CONN[port][i],prs:st.PRS[port][i]};
+}
+function syncExt(st,P,i){st.EXT[P][i]=st.CONN[P][i]==='SW'?(st.PRS[P][i]?'0':'1'):'Z'}
+function ledState(p){if(p.conn!=='LED')return'nc';return p.level===1?(p.src==='pic'?'on':'faint'):'off'}
+function readPort(st,port){
+  let v=0;const rnd=[];
+  for(let i=0;i<NPIN[port];i++){const p=pinInfo(st,port,i);let b=p.level;
+    if(b==='Z'||b==='x'){b=Math.random()<.5?0:1;rnd.push({i,b,why:p.level==='Z'?'floating':'unknown'})}
+    v|=b<<i}
+  return{v,rnd};
+}
+function readReg(st,name,addr){
+  switch(name){
+    case'STATUS':return{v:st.STATUS};case'OPTION_REG':return{v:st.OPTION};
+    case'PORTA':return readPort(st,'A');case'PORTB':return readPort(st,'B');
+    case'TRISA':return{v:st.TRIS.A&0x1F};case'TRISB':return{v:st.TRIS.B};
+    case'GPR':return{v:st.GPR[(addr&0x7F)-0x0C]};case'INDF':return{v:0};case null:return{v:0};
+    default:return{v:st.MISC[name]||0};
+  }
+}
+function writeReg(st,name,addr,v){
+  v&=255;
+  switch(name){
+    case'STATUS':st.STATUS=(v&~0x18)|(st.STATUS&0x18);break;
+    case'OPTION_REG':st.OPTION=v;break;
+    case'PORTA':for(let i=0;i<5;i++)st.LAT.A[i]=(v>>i)&1;break;
+    case'PORTB':for(let i=0;i<8;i++)st.LAT.B[i]=(v>>i)&1;break;
+    case'TRISA':st.TRIS.A=v&0x1F;break;case'TRISB':st.TRIS.B=v;break;
+    case'GPR':st.GPR[(addr&0x7F)-0x0C]=v;break;
+    case'INDF':case null:break;
+    default:st.MISC[name]=v;
+  }
+}
+
+/* ---------------- assembler bits ---------------- */
+function parseNum(tok){
+  const t=tok.trim();let m,v=NaN,note=null;
+  if((m=t.match(/^0x([0-9a-f]+)$/i)))v=parseInt(m[1],16);
+  else if((m=t.match(/^h'([0-9a-f]+)'$/i)))v=parseInt(m[1],16);
+  else if((m=t.match(/^b'([01]+)'$/i)))v=parseInt(m[1],2);
+  else if((m=t.match(/^0b([01]+)$/i)))v=parseInt(m[1],2);
+  else if((m=t.match(/^d'(\d+)'$/i)))v=parseInt(m[1],10);
+  else if((m=t.match(/^\.(\d+)$/)))v=parseInt(m[1],10);
+  else if((m=t.match(/^([0-9][0-9a-f]*)h$/i)))v=parseInt(m[1],16);
+  else if((m=t.match(/^[0-9a-f]+$/i))&&/^[0-9]/.test(t)){v=parseInt(t,16);if(/^\d+$/.test(t)&&parseInt(t,10)>9)note=`"${t}" is read as hex ${hex2(v)} (MPASM's default radix). Write .${t} or d'${t}' for decimal.`}
+  if(isNaN(v))throw new Error(`"${t}" is not a number or a known register name.`);
+  return{v,note};
+}
+function parseF(tok){
+  if(!tok)throw new Error('This instruction needs a register operand (f).');
+  const u=tok.trim().toUpperCase();
+  if(u in SFR)return{addr:SFR[u],sym:u==='OPTION'?'OPTION_REG':u};
+  const n=parseNum(tok);if(n.v>0xFF)throw new Error(`Register address ${hex2(n.v)} is out of range.`);
+  return{addr:n.v,sym:null,note:n.note};
+}
+function parseB(tok){
+  if(tok===undefined)throw new Error('Bit instructions need a bit number: BSF f,b');
+  const u=tok.trim().toUpperCase();
+  if(u in BITSYM)return BITSYM[u];
+  const n=parseNum(tok).v;if(n>7)throw new Error('Bit number must be 0–7.');return n;
+}
+function parseD(tok,notes){
+  if(tok===undefined){notes.push('No destination given, so the assembler uses ,F (result back into the register).');return 1}
+  const u=tok.trim().toUpperCase();if(u==='W'||u==='0')return 0;if(u==='F'||u==='1')return 1;
+  throw new Error('Destination must be W (0) or F (1).');
+}
+const OPS={
+  NOP:{k:'none',c:0x0000},CLRW:{k:'none',c:0x0100},
+  MOVLW:{k:'lit',c:0x3000},ANDLW:{k:'lit',c:0x3900},IORLW:{k:'lit',c:0x3800},XORLW:{k:'lit',c:0x3A00},ADDLW:{k:'lit',c:0x3E00},SUBLW:{k:'lit',c:0x3C00},
+  MOVWF:{k:'f',c:0x0080},CLRF:{k:'f',c:0x0180},
+  MOVF:{k:'fd',c:0x0800},COMF:{k:'fd',c:0x0900},INCF:{k:'fd',c:0x0A00},DECF:{k:'fd',c:0x0300},SWAPF:{k:'fd',c:0x0E00},RLF:{k:'fd',c:0x0D00},RRF:{k:'fd',c:0x0C00},
+  ANDWF:{k:'fd',c:0x0500},IORWF:{k:'fd',c:0x0400},XORWF:{k:'fd',c:0x0600},ADDWF:{k:'fd',c:0x0700},SUBWF:{k:'fd',c:0x0200},
+  BSF:{k:'fb',c:0x1400},BCF:{k:'fb',c:0x1000},BTFSC:{k:'fb',c:0x1800},BTFSS:{k:'fb',c:0x1C00},
+  TRIS:{k:'tris',c:0x0060}
+};
+function alu(op,f,w,b,C){
+  let r=null,z=false,c=null,dc=null,txt='';
+  switch(op){
+    case'MOVF':r=f;z=true;txt=`pass ${hex2(f)} through`;break;
+    case'COMF':r=~f&255;z=true;txt=`complement ${bin8(f)} → ${bin8(r)}`;break;
+    case'INCF':r=(f+1)&255;z=true;txt=`${hex2(f)} + 1 = ${hex2(r)}`;break;
+    case'DECF':r=(f-1)&255;z=true;txt=`${hex2(f)} − 1 = ${hex2(r)}`;break;
+    case'SWAPF':r=((f<<4)|(f>>4))&255;txt=`swap nibbles ${hex2(f)} → ${hex2(r)}`;break;
+    case'RLF':r=((f<<1)|C)&255;c=f>>7;txt=`rotate left through C: ${bin8(f)} → ${bin8(r)}, C = ${c}`;break;
+    case'RRF':r=(f>>1)|(C<<7);c=f&1;txt=`rotate right through C: ${bin8(f)} → ${bin8(r)}, C = ${c}`;break;
+    case'ANDWF':r=f&w;z=true;txt=`${bin8(f)} AND ${bin8(w)} = ${bin8(r)}`;break;
+    case'IORWF':r=f|w;z=true;txt=`${bin8(f)} OR ${bin8(w)} = ${bin8(r)}`;break;
+    case'XORWF':r=f^w;z=true;txt=`${bin8(f)} XOR ${bin8(w)} = ${bin8(r)}`;break;
+    case'ADDWF':{const s=f+w;r=s&255;c=s>255?1:0;dc=((f&15)+(w&15))>15?1:0;z=true;txt=`${hex2(f)} + ${hex2(w)} = ${hex2(r)}, C = ${c}`;break}
+    case'SUBWF':r=(f-w)&255;c=f>=w?1:0;dc=(f&15)>=(w&15)?1:0;z=true;txt=`${hex2(f)} − ${hex2(w)} = ${hex2(r)}, C = ${c} (C = 1 means no borrow)`;break;
+    case'MOVLW':r=b;txt=`literal ${hex2(b)}`;break;
+    case'ANDLW':r=w&b;z=true;txt=`${bin8(w)} AND ${bin8(b)} = ${bin8(r)}`;break;
+    case'IORLW':r=w|b;z=true;txt=`${bin8(w)} OR ${bin8(b)} = ${bin8(r)}`;break;
+    case'XORLW':r=w^b;z=true;txt=`${bin8(w)} XOR ${bin8(b)} = ${bin8(r)}`;break;
+    case'ADDLW':{const s=w+b;r=s&255;c=s>255?1:0;dc=((w&15)+(b&15))>15?1:0;z=true;txt=`${hex2(w)} + ${hex2(b)} = ${hex2(r)}, C = ${c}`;break}
+    case'SUBLW':r=(b-w)&255;c=b>=w?1:0;dc=(b&15)>=(w&15)?1:0;z=true;txt=`${hex2(b)} − ${hex2(w)} = ${hex2(r)}, C = ${c}`;break;
+    case'BSF':r=f|(1<<b);txt=`set bit ${b}: ${bin8(f)} → ${bin8(r)}`;break;
+    case'BCF':r=f&~(1<<b)&255;txt=`clear bit ${b}: ${bin8(f)} → ${bin8(r)}`;break;
+  }
+  return{r,z,c,dc,txt};
+}
+function setFlags(st,a){
+  if(a.z)st.STATUS=a.r===0?st.STATUS|4:st.STATUS&~4;
+  if(a.c!==null)st.STATUS=a.c?st.STATUS|1:st.STATUS&~1;
+  if(a.dc!==null)st.STATUS=a.dc?st.STATUS|2:st.STATUS&~2;
+}
+
+/* ---------------- instruction → plan ---------------- */
+function pinNm(port,i){return'R'+port+i}
+function lvlWord(v){return v===1?'HIGH':v===0?'LOW':v==='Z'?'floating (Hi-Z)':'unknown'}
+
+function build(line){
+  const src=line.replace(/;.*/,'').trim();
+  const m=src.match(/^([A-Za-z]+)\s*(.*)$/);if(!m)throw new Error('Could not read that line. Type help to see what is supported.');
+  const mn=m[1].toUpperCase();const args=m[2]?m[2].split(',').map(s=>s.trim()).filter(s=>s.length):[];
+  const op=OPS[mn];if(!op)throw new Error(`"${mn}" is not supported here. Type help for the list of instructions.`);
+  const before=clone(S),notes=[],warns=[],steps=[];
+  let code=op.c,desc=mn;
+  let target=null; // register name written/read
+  let reads=false,writesF=false,writesW=false,fAddr=null,b=null,d=null,lit=null,fsym=null;
+
+  if(op.k==='lit'){if(args.length!==1)throw new Error(`${mn} takes one literal: ${mn} k`);const n=parseNum(args[0]);if(n.note)notes.push(n.note);if(n.v>255)throw new Error('Literal must fit in 8 bits (0–255).');lit=n.v;code|=lit;desc=`${mn} ${hex2(lit)}`}
+  if(op.k==='f'||op.k==='fd'||op.k==='fb'){
+    const pf=parseF(args[0]);if(pf.note)notes.push(pf.note);fsym=pf.sym||hex2(pf.addr);
+    const f7=pf.addr&0x7F,want=pf.addr>>7,cur=rp0(S);fAddr=(cur<<7)|f7;target=regName(fAddr);
+    if((pf.sym||pf.addr>0x7F)&&want!==cur&&!MIRRORED.has(f7)&&!(f7>=0x0C&&f7<=0x4F))
+      warns.push(`<b>${esc(fsym)}</b> lives in bank ${want}, but RP0 = ${cur}. The instruction only carries 7 address bits (${hex2(f7)}), so it reaches <b>${target||'an unimplemented location'}</b> instead. Set RP0 first: <code>B${want?'S':'C'}F STATUS,RP0</code>.`);
+    code|=f7;
+    if(op.k==='fd'){d=parseD(args[1],notes);code|=d<<7}
+    if(op.k==='fb'){b=parseB(args[1]);code|=b<<7}
+    if(target===null)notes.push(`Address ${hex2(fAddr)} is not implemented on the 16F84A: reads return 0 and writes are lost.`);
+  }
+  if(op.k==='tris'){
+    if(args.length!==1)throw new Error('TRIS takes the port: TRIS PORTA or TRIS PORTB.');
+    const pf=parseF(args[0]);const f7=pf.addr&0x7F;if(f7!==5&&f7!==6)throw new Error('TRIS works only with PORTA (5) or PORTB (6) on the 16F84A.');
+    code|=f7;target=f7===5?'TRISA':'TRISB';desc=`TRIS ${f7===5?'PORTA':'PORTB'}`;
+    notes.push('TRIS copies W straight into the TRIS register without bank switching. Microchip keeps it only for compatibility and does not recommend it for new designs.');
+  }
+  if(op.k==='f'||op.k==='fd'||op.k==='fb')desc=`${mn} ${fsym}${op.k==='fd'?','+(d?'F':'W'):''}${op.k==='fb'?','+b:''}`;
+
+  // follow the view to the port being touched
+  const tp=target&&(isPort(target)||isTris(target))?target.slice(-1):null;
+  if(tp){const nb=(b!==null&&b<NPIN[tp])?b:(view.bit<NPIN[tp]?view.bit:0);view={port:tp,bit:nb}}
+  const vb=view.bit;
+  const P=view.port;
+  const pn=pinNm(P,vb);
+  const onView=tp===P;
+
+  steps.push({q:'Q1',t:`Fetch and decode <code>${hex4(code)}</code> (<code>${bin14(code)}</code>) → <code>${esc(desc)}</code>${fAddr!==null?`, file address ${hex2(fAddr)} = <b>${target||'unimplemented'}</b> (RP0 = ${rp0(S)})`:''}.`,snap:'b',ov:{}});
+
+  // ---- execute
+  let rv=null,rd=null,res=null,a=null,wbit=null,rbit=null;
+  const W0=S.W,C0=S.STATUS&1;
+  if(op.k==='none'){
+    if(mn==='CLRW'){a={r:0,z:true,c:null,dc:null};S.W=0;setFlags(S,a);writesW=true;res=0}
+  }else if(op.k==='lit'){
+    a=alu(mn,0,W0,lit,C0);S.W=a.r;setFlags(S,a);writesW=true;res=a.r;
+  }else if(op.k==='tris'){
+    res=W0;writeReg(S,target,null,res);writesF=true;
+  }else{
+    const needRead=!(mn==='MOVWF'||mn==='CLRF');
+    if(needRead){rd=readReg(before,target,fAddr);rv=rd.v;reads=true}
+    if(mn==='MOVWF'){res=W0;writeReg(S,target,fAddr,res);writesF=true}
+    else if(mn==='CLRF'){res=0;a={r:0,z:true,c:null,dc:null};writeReg(S,target,fAddr,0);setFlags(S,a);writesF=true}
+    else if(mn==='BTFSC'||mn==='BTFSS'){res=null}
+    else{
+      a=alu(mn,rv,W0,b,C0);res=a.r;
+      if(op.k==='fb'||d===1){writeReg(S,target,fAddr,res);writesF=true}else{S.W=res;writesW=true}
+      setFlags(S,a);
+    }
+  }
+  if(rd&&rd.rnd&&rd.rnd.length){const P_=target.slice(-1),fl=rd.rnd.filter(r=>r.why==='floating'),uk=rd.rnd.filter(r=>r.why!=='floating');
+    const lst=a=>a.map(r=>`${pinNm(P_,r.i)}=${r.b}`).join(', ');
+    if(fl.length)warns.push(`<b>Floating input${fl.length>1?'s':''}:</b> nothing drives ${fl.length>1?'these pins':'this pin'}, so ${fl.length>1?'they':'it'} read by chance as ${lst(fl)}. A real chip could read either value, and it can change between reads. Connect the switch with J1, or enable the PORTB weak pull-ups.`);
+    if(uk.length)warns.push(`<b>Unknown output level:</b> ${lst(uk)} come from latches never written since reset, so the read value is unpredictable.`);}
+
+  // ---- Q2 read
+  if(reads){
+    if(isPort(target)&&onView){
+      rbit=(rv>>vb)&1;
+      steps.push({q:'Q2',t:`<b>RD ${target}</b> pulses high. The inverter pulls the input latch's EN low, so the latch freezes the level it was following on <b>${pn}</b>. The read buffer turns on and puts <b>${pn} = ${rbit}</b> on the data bus. Reading a port reads the <i>pins</i>, not the data latch.`,
+        snap:'b',ov:{rdPort:1,bus:rbit,sample:rbit,busDir:'up'},act:['w-pin','w-sch','w-rdport','w-inv','w-syncQ','w-rdport-out','w-bus'],comps:['b-rdport']});
+    }else if(isTris(target)&&onView){
+      rbit=(rv>>vb)&1;
+      steps.push({q:'Q2',t:`<b>RD ${target}</b> pulses. The TRIS read buffer turns on and copies the TRIS latch output (<b>${rbit}</b>) onto the data bus.`,
+        snap:'b',ov:{rdTris:1,bus:rbit,busDir:'up'},act:['w-rdtris-en','w-trisQ','w-rdtris-out','w-bus'],comps:['b-rdtris']});
+    }else{
+      steps.push({q:'Q2',t:`Read <b>${target||hex2(fAddr)}</b> = <code>${hex2(rv)}</code>. This register is not part of the ${pn} circuit, so the pin hardware stays idle.`,snap:'b',ov:{}});
+    }
+  }else if(mn==='TRIS'||mn==='MOVWF'){
+    steps.push({q:'Q2',t:`Read W = <code>${hex2(W0)}</code> (<code>${bin8(W0)}</code>).`,snap:'b',ov:{}});
+  }
+
+  // ---- Q3 process
+  if(mn==='BTFSC'||mn==='BTFSS'){
+    const bit=(rv>>b)&1,skip=(mn==='BTFSS')?bit===1:bit===0;
+    steps.push({q:'Q3',t:`Test bit ${b} of ${hex2(rv)}: it is <b>${bit}</b>, so the next instruction ${skip?'<b>is skipped</b> (it becomes a NOP and this takes 2 cycles)':'runs normally'}.`,snap:'b',ov:{}});
+    notes.push(`Bit ${b} = ${bit} → ${skip?'skip next instruction':'no skip'}.`);
+  }else if(a&&a.txt){
+    steps.push({q:'Q3',t:`ALU: ${a.txt}${a.z?` · Z = ${a.r===0?1:0}`:''}.`,snap:'b',ov:{}});
+  }else if(mn==='MOVWF'||mn==='TRIS'||mn==='CLRF'){
+    steps.push({q:'Q3',t:mn==='CLRF'?'ALU produces 0x00 and sets Z = 1.':'No ALU operation; W passes straight through.',snap:'b',ov:{}});
+  }else if(mn==='NOP'){
+    steps.push({q:'Q3',t:'No operation.',snap:'b',ov:{}});
+  }
+
+  // ---- Q4 write
+  if(writesF&&res!==null){
+    if(isPort(target)&&onView){
+      wbit=(res>>vb)&1;
+      const pi=pinInfo(S,P,vb);
+      steps.push({q:'Q4',t:`The result <code>${hex2(res)}</code> drives the data bus; bit ${vb} = <b>${wbit}</b> reaches D of the ${pn} data latch. <b>WR ${target}</b> pulses.`,
+        snap:'b',ov:{bus:wbit,wrPort:1,busDir:'down'},act:['w-bus','w-dD','w-wrport']});
+      let cons;
+      if(pi.t===1)cons=`TRIS${P}&lt;${vb}&gt; = 1, so the output buffer stays in <b>Hi-Z</b>. The pin is unaffected; the value waits in the latch until the pin becomes an output.`;
+      else if(pi.od&&wbit===1)cons=`RA4 has an open-drain driver: Q = 1 turns the N-channel transistor off, so the pin is not driven high. ${pi.level==='Z'?'Nothing else drives it, so it floats. Add an external pull-up resistor.':'The external source now sets the level.'}`;
+      else cons=`TRIS${P}&lt;${vb}&gt; = 0, so the output buffer is enabled and drives <b>${pn} ${wbit?'HIGH':'LOW'}</b>.${pi.fight?' The external source pulls the other way through its resistor, but the PIC driver wins.':''}`;
+      steps.push({q:'Q4',t:`<b>WR ${target}</b> falls. On that edge the data latch captures D, so <b>Q = ${wbit}</b>. ${cons}`,
+        snap:'a',ov:{bus:wbit,edge:'data',busDir:'down'},act:pi.t===0?['w-dQ','w-out','w-pin']:['w-dQ'],comps:pi.t===0?['b-out']:[]});
+    }else if(isTris(target)&&onView){
+      wbit=(res>>vb)&1;
+      const pi=pinInfo(S,P,vb);
+      steps.push({q:'Q4',t:`${mn==='TRIS'?'W':'The result'} <code>${hex2(res)}</code> drives the data bus; bit ${vb} = <b>${wbit}</b> reaches D of the ${pn} TRIS latch. <b>WR ${target}</b> pulses.`,
+        snap:'b',ov:{bus:wbit,wrTris:1,busDir:'down'},act:['w-bus','w-trisD','w-wrtris']});
+      const cons=wbit===0
+        ?`TRIS Q = 0 and OE is active-low, so the <b>output buffer turns on</b>. ${pn} is now an output and the data latch (Q = ${pi.l}) drives it ${lvlWord(pi.level)}.${pi.l==='x'?' The latch was never written, so the pin level is unpredictable. Write PORT before clearing TRIS.':''}`
+        :`TRIS Q = 1, so the output buffer goes to <b>Hi-Z</b>. ${pn} is an input; its level now comes from outside: ${lvlWord(pi.level)}${pi.src==='pullup'?' (weak pull-up)':''}.`;
+      steps.push({q:'Q4',t:`<b>WR ${target}</b> falls. The TRIS latch captures D: <b>Q = ${wbit}</b>. ${cons}`,
+        snap:'a',ov:{bus:wbit,edge:'tris',busDir:'down'},act:['w-trisQ','w-out','w-pin'],comps:['b-out']});
+    }else{
+      let extra='';
+      if(target==='STATUS'){const r=(res>>5)&1;extra=` RP0 = ${r}: bank ${r} is now selected${rp0(before)!==r?' (changed)':''}.`}
+      if(target==='OPTION_REG')extra=` RBPU = ${(res>>7)&1}: PORTB weak pull-ups are ${(res&0x80)?'off':'on for input pins'}.`;
+      if(isPort(target)||isTris(target))extra=` (Click an ${target.slice(-1)==='A'?'RA':'RB'} pin to watch this write in the circuit.)`;
+      steps.push({q:'Q4',t:`Write <code>${hex2(res)}</code> to <b>${target||hex2(fAddr)}</b>.${extra}`,snap:'a',ov:{}});
+    }
+  }else if(writesW){
+    steps.push({q:'Q4',t:`Write the result <code>${hex2(res)}</code> into W.`,snap:'a',ov:{}});
+  }
+
+  // ---- RMW consequences
+  if(writesF&&isPort(target)&&reads){
+    const p=target.slice(-1),ch=[];
+    for(let i=0;i<NPIN[p];i++){if(op.k==='fb'&&i===b)continue;const o=before.LAT[p][i],n=S.LAT[p][i];if(o!==n)ch.push(`${pinNm(p,i)} ${o}→${n}`)}
+    if(ch.length)warns.push(`<b>Read-modify-write:</b> ${esc(desc)} read the whole port from the <i>pins</i>, then wrote all ${NPIN[p]} bits back into the data latches. Latches you did not mean to touch changed: ${ch.join(', ')}. Any of these pins that are inputs (or loaded outputs) copied their pin level into their latch.`);
+  }
+  if(writesF&&isPort(target)){
+    const p=target.slice(-1);const ins=[];for(let i=0;i<NPIN[p];i++)if((S.TRIS[p]>>i)&1)ins.push(pinNm(p,i));
+    if(ins.length===NPIN[p])notes.push(`Every ${p==='A'?'RA':'RB'} pin is still an input (TRIS${p} = ${hex2(S.TRIS[p])}), so the value went into the latches only. Clear TRIS bits to make pins outputs.`);
+  }
+  steps.push({q:'✓',t:summary(before,S,desc),snap:'a',ov:{},done:true});
+  return{line:src,desc,code,before,after:clone(S),steps,notes,warns,view:{...view}};
+}
+function summary(b,a,desc){
+  const parts=[];
+  if(b.W!==a.W)parts.push(`W ${hex2(b.W)} → ${hex2(a.W)}`);
+  const sb=b.STATUS,sa=a.STATUS;if(sb!==sa){const f=[];if((sb^sa)&0x20)f.push(`RP0 ${(sa>>5)&1}`);if((sb^sa)&4)f.push(`Z ${(sa>>2)&1}`);if((sb^sa)&1)f.push(`C ${sa&1}`);if((sb^sa)&2)f.push(`DC ${(sa>>1)&1}`);if(f.length)parts.push('STATUS: '+f.join(', '))}
+  if(b.OPTION!==a.OPTION)parts.push(`OPTION_REG ${hex2(b.OPTION)} → ${hex2(a.OPTION)}`);
+  for(const p of['A','B']){
+    if(b.TRIS[p]!==a.TRIS[p])parts.push(`TRIS${p} ${hex2(b.TRIS[p])} → ${hex2(a.TRIS[p])}`);
+    const lb=b.LAT[p].slice().reverse().join(''),la=a.LAT[p].slice().reverse().join('');if(lb!==la)parts.push(`PORT${p} latch ${lb} → ${la}`);
+    const ch=[];for(let i=0;i<NPIN[p];i++){const x=pinInfo(b,p,i).level,y=pinInfo(a,p,i).level;if(x!==y)ch.push(`${pinNm(p,i)} ${lvlWord(y)}`)}
+    if(ch.length)parts.push('pins: '+ch.join(', '));
+  }
+  return parts.length?`<b>Done.</b> ${parts.join(' · ')}.`:`<b>Done.</b> No register or pin changed.`;
+}
+
+/* ---------------- rendering ---------------- */
+const WIRES=['w-pnet','w-led','w-sw','w-bus','w-dD','w-wrport','w-dQ','w-rdlat-en','w-rdlat-out','w-trisD','w-wrtris','w-trisQ','w-rdtris-en','w-rdtris-out','w-out','w-pin','w-ext','w-pullup','w-sch','w-syncQ','w-rdport','w-rdport-out','w-inv'];
+const cls=v=>v===1?'v1':v===0?'v0':v==='Z'?'vz':v==='x'?'vx':v==='off'?'voff':'vidle';
+const NS='http://www.w3.org/2000/svg';
+let cur={st:S,ov:{},act:[],comps:[],step:null,plan:null};
+
+function badge(g,x,y,v,label){
+  const k=v===1?'b1':v===0?'b0':v==='Z'?'bz':v==='x'?'bx':'bidle';
+  const t=v===1?'1':v===0?'0':v==='Z'?'Z':v==='x'?'x':'–';
+  const e=document.createElementNS(NS,'g');e.setAttribute('class','badge '+k);
+  const txt=label?`${label}=${t}`:t,w=Math.max(20,txt.length*7+8);
+  e.innerHTML=`<rect x="${x}" y="${y}" width="${w}" height="16" rx="4"></rect><text x="${x+w/2}" y="${y+12}">${txt}</text>`;
+  g.appendChild(e);
+}
+function renderCircuit(st,ov,act,comps){
+  const P=view.port,i=view.bit,p=pinInfo(st,P,i);
+  const oe=p.t===0;
+  const outv=oe?(p.od?(p.l===0?0:(p.l==='x'?'x':'Z')):p.l):'Z';
+  const sch=p.level==='Z'?'x':p.level;
+  const syncQ=ov.rdPort?(ov.sample!==undefined?ov.sample:sch):sch;
+  const bus=ov.bus!==undefined?ov.bus:'idle';
+  const swPos=p.prs?'0':'1';
+  const val={
+    'w-bus':bus,'w-dD':bus,'w-trisD':bus,
+    'w-wrport':ov.wrPort?1:0,'w-wrtris':ov.wrTris?1:0,'w-rdport':ov.rdPort?1:0,'w-rdtris-en':ov.rdTris?1:0,'w-rdlat-en':'off','w-rdlat-out':'off',
+    'w-inv':ov.rdPort?0:1,'w-dQ':p.l,'w-trisQ':p.t,'w-out':outv,'w-pin':p.level,'w-sch':sch,'w-syncQ':syncQ,
+    'w-rdport-out':ov.rdPort?syncQ:'Z','w-rdtris-out':ov.rdTris?p.t:'Z','w-ext':p.conn==='SW'?+swPos:'off','w-sw':+swPos,'w-pnet':p.level,'w-led':p.conn==='LED'?p.level:'off','w-pullup':p.pu?1:'off'
+  };
+  const flows=$('#flows'),halos=$('#halos');flows.innerHTML='';halos.innerHTML='';
+  for(const id of WIRES){const el=document.getElementById(id);el.setAttribute('class','w '+cls(val[id])+(act.includes(id)?' act':''))}
+  for(const id of act){const src=document.getElementById(id);if(!src)continue;const d=src.getAttribute('d');
+    const h=document.createElementNS(NS,'path');h.setAttribute('d',d);h.setAttribute('class','halo');halos.appendChild(h);
+    const f=document.createElementNS(NS,'path');f.setAttribute('d',d);f.setAttribute('class','flow'+((id==='w-bus'&&ov.busDir==='up')?' rev':''));flows.appendChild(f)}
+  // components
+  const set=(id,c)=>document.getElementById(id).setAttribute('class',c);
+  set('b-out','comp'+(oe?' on':' dis'));
+  set('oeBubble','comp'+(oe?' on':''));
+  set('b-rdport','comp'+(ov.rdPort?' on':''));
+  set('b-rdtris','comp'+(ov.rdTris?' on':''));
+  set('b-inv','comp'+(ov.rdPort?' on':''));
+  set('b-in','comp'+(p.level==='Z'?' dis':''));
+  for(const [id,e] of [['ff-data','data'],['ff-tris','tris']]){const el=document.getElementById(id);el.setAttribute('class','ff');if(ov.edge===e){void el.getBBox();requestAnimationFrame(()=>el.setAttribute('class','ff fire'))}}
+  set('ff-in','ff'+(ov.rdPort?' fire':''));
+  $('#outState').textContent=oe?(p.od?(p.l===0?'ON · sinks to GND':'OFF (open drain)'):'ON · driving'):'Hi-Z · disabled';
+  $('#odNote').setAttribute('display',p.od?'inline':'none');
+  $('#enState').textContent=ov.rdPort?'EN = 0 · holding':'EN = 1 · transparent';
+  $('#pullup').setAttribute('display',P==='B'?'inline':'none');
+  $('#puLbl').textContent=p.pu?'weak pull-up ON (RBPU = 0)':'weak pull-up off';
+  const st_=P==='A'&&i===4;$('#hyst').setAttribute('display',st_?'inline':'none');$('#inType').textContent=st_?'Schmitt-trigger input buffer':'TTL input buffer';
+  for(const id of['p-wrport','p-wrtris','p-rdport','p-rdtris'])document.getElementById(id).setAttribute('class','pulse');
+  if(ov.wrPort)$('#p-wrport').setAttribute('class','pulse on');if(ov.wrTris)$('#p-wrtris').setAttribute('class','pulse on');
+  if(ov.rdPort)$('#p-rdport').setAttribute('class','pulse on');if(ov.rdTris)$('#p-rdtris').setAttribute('class','pulse on');
+  const pn=pinNm(P,i);$('#pinName').textContent=pn;$('#pinTitle').textContent=pn;$('#busBit').textContent=i;
+  $('#pinLvl').textContent=p.level===1?'HIGH':p.level===0?'LOW':p.level==='Z'?'floating':'unknown';
+  $('#j1Lever').setAttribute('d',p.conn==='SW'?'M752 135 L784 135':'M752 135 L752 167');
+  $('#swLever').setAttribute('d',swPos==='0'?'M880 206 L881 179':'M880 206 L900 182');
+  $('#swState').textContent=swPos==='0'?'pressed':'released';
+  const ls=ledState(p);$('#led').setAttribute('class',ls);
+  $('#ledLbl').textContent=ls==='on'?'LED ON: PIC drives the pin HIGH':ls==='faint'?'LED glows faintly: weak pull-up only':ls==='nc'?'LED not connected':'LED off';
+  // badges
+  const g=$('#badges');g.innerHTML='';
+  if(bus!=='idle')badge(g,180,12,bus);
+  badge(g,268,118,bus,'D');badge(g,400,113,p.l,'Q');
+  badge(g,268,318,bus,'D');badge(g,400,313,p.t,'Q');
+  badge(g,500,212,oe?0:1,'OE');
+  badge(g,600,118,outv);
+  badge(g,476,463,sch,'D');badge(g,346,463,syncQ,'Q');
+}
+function renderPins(st){
+  for(const P of['A','B']){
+    const box=document.getElementById('pins'+P);
+    if(!box.dataset.built){
+      let h='';
+      
+      for(let i=NPIN[P]-1;i>=0;i--)h+=`<div class="pin" data-p="${P}" data-i="${i}" role="button" tabindex="0" aria-label="Inspect ${pinNm(P,i)}"><span class="nm">${pinNm(P,i)}</span><span class="dir"></span><span class="lvl"></span><button class="ext" type="button" data-p="${P}" data-i="${i}" aria-label="External source on ${pinNm(P,i)}"></button><span class="warn"></span></div>`;
+      box.innerHTML=h;box.dataset.built='1';
+    }
+    box.querySelectorAll('.pin').forEach(el=>{
+      const i=+el.dataset.i,p=pinInfo(st,P,i);
+      el.classList.toggle('sel',view.port===P&&view.bit===i);
+      const d=el.querySelector('.dir');d.textContent=p.t?'IN':(p.od?'OUT·OD':'OUT');d.className='dir'+(p.t?'':' out');
+      el.querySelector('.lvl').className='lvl '+(p.level===1?'l1':p.level===0?'l0':p.level==='Z'?'lz':'lx');
+      el.querySelector('.lvl').title=`${pinNm(P,i)}: ${lvlWord(p.level)}`;
+      el.querySelector('.ext').textContent=p.conn==='LED'?'LED':(p.prs?'SW·LO':'SW·HI');
+      el.querySelector('.warn').textContent=p.fight?'⚠':'';el.querySelector('.warn').title=p.fight?'The pressed switch pulls against the PIC output':'';
+    });
+  }
+}
+function bitsRow(v,n,ref,names,unk){
+  let cells='';for(let i=7;i>=0;i--){
+    let c='bit',t;
+    if(i>=n){c+=' na';t='–'}else{const x=Array.isArray(v)?v[i]:(v>>i)&1;t=x;if(x===1)c+=' one';if(x==='x')c+=' unk';
+      if(ref!==undefined){const y=Array.isArray(ref)?ref[i]:(ref>>i)&1;if(y!==x)c+=' chg'}}
+    cells+=`<span class="${c}">${t}</span>`}
+  return `<div class="bits">${cells}</div>`+(names?`<div class="bitnames">${names.map(s=>`<span>${s}</span>`).join('')}</div>`:'');
+}
+function pinsArr(st,P){const a=[];for(let i=0;i<NPIN[P];i++){const l=pinInfo(st,P,i).level;a.push(l==='Z'?'z':l)}return a}
+function renderRegs(st,ref){
+  const r=ref||undefined;const rows=[];
+  const hx=(v,n)=>Array.isArray(v)?(v.includes('x')?'0x'+'?':hex2(v.reduce((s,b,i)=>s|((b===1?1:0)<<i),0))):hex2(v);
+  rows.push(['W','',bitsRow(st.W,8,r&&r.W),hex2(st.W)]);
+  rows.push(['STATUS','0x03 / 0x83',bitsRow(st.STATUS,8,r&&r.STATUS,['IRP','RP1','RP0','TO','PD','Z','DC','C']),hex2(st.STATUS)]);
+  rows.push(['OPTION_REG','0x81',bitsRow(st.OPTION,8,r&&r.OPTION,['RBPU','INTEDG','T0CS','T0SE','PSA','PS2','PS1','PS0']),hex2(st.OPTION)]);
+  rows.push(['TRISA','0x85',bitsRow(st.TRIS.A,5,r&&r.TRIS.A),hex2(st.TRIS.A)]);
+  rows.push(['PORTA latch','0x05 write',bitsRow(st.LAT.A,5,r&&r.LAT.A),hx(st.LAT.A)]);
+  rows.push(['PORTA pins','0x05 read',bitsRow(pinsArr(st,'A'),5,r&&pinsArr(r,'A')),'']);
+  rows.push(['TRISB','0x86',bitsRow(st.TRIS.B,8,r&&r.TRIS.B),hex2(st.TRIS.B)]);
+  rows.push(['PORTB latch','0x06 write',bitsRow(st.LAT.B,8,r&&r.LAT.B),hx(st.LAT.B)]);
+  rows.push(['PORTB pins','0x06 read',bitsRow(pinsArr(st,'B'),8,r&&pinsArr(r,'B')),'']);
+  $('#regTable').innerHTML=rows.map(([n,a,b,h])=>`<tr><th>${n}${a?`<small>${a}</small>`:''}</th><td>${b}</td><td class="hex">${h}</td></tr>`).join('');
+  $('#bankNo').textContent=rp0(st);
+}
+function renderPhase(q){document.querySelectorAll('#phases span').forEach(s=>s.classList.toggle('on',s.textContent===q))}
+function render(){
+  const st=cur.st;
+  renderCircuit(st,cur.ov,cur.act||[],cur.comps||[]);
+  renderPins(st);
+  renderRegs(st,cur.ref);
+}
+function idleCaption(){
+  const p=pinInfo(S,view.port,view.bit),pn=pinNm(view.port,view.bit);
+  let t;
+  if(p.t===1)t=`<b>${pn}</b> is an <b>input</b> (TRIS${view.port}&lt;${view.bit}&gt; = 1): the output buffer is in Hi-Z and the pin level comes from outside: <b>${lvlWord(p.level)}</b>${p.src==='pullup'?' via the weak pull-up':''}. The data latch holds <b>${p.l}</b>${p.l==='x'?' (never written since reset)':''}, ready for when the pin becomes an output.`;
+  else t=`<b>${pn}</b> is an <b>output</b> (TRIS${view.port}&lt;${view.bit}&gt; = 0): the output buffer drives the data latch value <b>${p.l}</b> onto the pin, which is <b>${lvlWord(p.level)}</b>.${p.od?' RA4 is open-drain: it can only pull low.':''}${p.fight?' The pressed switch pulls the other way through 470 Ω, but the PIC driver wins.':''}`;
+  if(p.conn==='SW'){
+    t+=` J1 connects the pin to the <b>switch</b> (an input device), which is <b>${p.prs?'pressed: pin pulled to GND':'released: 10 kΩ pull-up to VDD'}</b>.`;
+    if(p.t===0)t+=` An output driving a switch is a mismatch: pressing it shorts the pin to GND through 470 Ω.`;
+  }else{
+    const ls=ledState(p);
+    t+=` J1 connects the pin to the <b>LED</b> (an output device, 330 Ω to GND). The LED is <b>${ls==='on'?'ON':ls==='faint'?'barely lit':'off'}</b>.`;
+    if(p.t===1)t+=ls==='faint'?' Only the weak pull-up feeds it, so it glows faintly.':' An LED cannot drive the pin, so as an input the pin floats. Clear the TRIS bit to make it an output.';
+    else if(p.od&&p.l===1)t+=' RA4 is open-drain and cannot source current, so it can never light an LED wired to GND.';
+  }
+  return t;
+}
+function showIdle(){
+  cur={st:S,ov:{},act:[],comps:[],ref:null};
+  $('#capPh').textContent='IDLE';$('#capPh').className='ph idle';$('#caption').innerHTML=idleCaption();renderPhase(null);render();
+}
+
+/* ---------------- animation ---------------- */
+let busy=false,queue=[],lastPlan=null,stepResolve=null;
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+function waitStep(){
+  const ms=+$('#speed').value;
+  if($('#stepMode').checked){$('#nextBtn').disabled=false;return new Promise(r=>{stepResolve=()=>{stepResolve=null;$('#nextBtn').disabled=true;r()}})}
+  return wait(ms);
+}
+async function animate(plan){
+  view={...plan.view};
+  // only the steps that move signals in the pin circuit are animated; everything else just updates state
+  const circ=plan.steps.filter(s=>s.act&&s.act.length);
+  const instant=+$('#speed').value===0&&!$('#stepMode').checked;
+  if(!instant)for(const s of circ){
+    cur={st:s.snap==='a'?plan.after:plan.before,ov:s.ov,act:s.act,comps:s.comps||[],ref:s.snap==='a'?plan.before:null};
+    $('#capPh').textContent=s.q;$('#capPh').className='ph';$('#caption').innerHTML=s.t;renderPhase(s.q);
+    render();
+    await waitStep();
+  }
+  const last=plan.steps[plan.steps.length-1];
+  cur={st:plan.after,ov:{},act:[],comps:[],ref:plan.before};
+  $('#capPh').textContent='DONE';$('#capPh').className='ph idle';$('#caption').innerHTML=last.t;renderPhase(null);
+  render();
+  await wait(instant||!circ.length?0:Math.min(600,+$('#speed').value));
+}
+function logEntry(html,cls){const d=document.createElement('div');d.className='entry'+(cls?' '+cls:'');d.innerHTML=html;const L=$('#log');L.appendChild(d);L.scrollTop=L.scrollHeight}
+function logPlan(p){
+  let h=`<div class="cmd">${esc(p.line)}</div><div class="enc">${hex4(p.code)} · ${bin14(p.code)}</div>`;
+  h+=`<div>${p.steps[p.steps.length-1].t.replace(/^<b>Done\.<\/b> ?/,'')}</div>`;
+  for(const n of p.notes)h+=`<div class="nt">${n}</div>`;
+  for(const w of p.warns)h+=`<div class="w8">⚠ ${w}</div>`;
+  logEntry(h);
+}
+const HELP=`<b>Instructions</b> (PIC16F84A mid-range set, the ones that touch data and I/O):
+<table><tr><td>Byte, file</td><td><code>MOVWF f · CLRF f · MOVF f,d · COMF · INCF · DECF · SWAPF · RLF · RRF · ANDWF · IORWF · XORWF · ADDWF · SUBWF f,d</code></td></tr>
+<tr><td>Bit</td><td><code>BSF f,b · BCF f,b · BTFSS f,b · BTFSC f,b</code></td></tr>
+<tr><td>Literal</td><td><code>MOVLW k · ANDLW · IORLW · XORLW · ADDLW · SUBLW k</code></td></tr>
+<tr><td>Other</td><td><code>CLRW · NOP · TRIS PORTA|PORTB</code></td></tr></table>
+<b>Operands:</b> register names <code>PORTA PORTB TRISA TRISB STATUS OPTION_REG</code> or addresses (<code>0x06</code>, <code>06h</code>, <code>h'06'</code>). Plain digits are hex, as in MPASM; use <code>.10</code> or <code>d'10'</code> for decimal and <code>b'00001111'</code> for binary. Bits by number or name (<code>RP0</code>, <code>Z</code>, <code>RB3</code>, <code>RBPU</code>). <code>d</code> is <code>W</code> or <code>F</code>.<br>
+<b>Lab commands:</b> <code>connect RB0 led|switch</code> (J1 selector) · <code>press RA2</code> / <code>release RA2</code> · <code>view RA2</code> (inspect a pin) · <code>reset</code> · <code>clear</code> · <code>help</code>. Use ↑ / ↓ for history.`;
+
+function meta(line){
+  const t=line.trim(),u=t.toUpperCase();
+  if(u==='HELP'||u==='?'){logEntry(`<div class="cmd">${esc(t)}</div><div class="nt" style="font-family:var(--mono);font-size:12.5px">${HELP}</div>`);return true}
+  if(u==='CLEAR'){$('#log').innerHTML='';return true}
+  if(u==='RESET'){doReset();return true}
+  let m=u.match(/^(CONNECT|PRESS|RELEASE|SET)\s+R([AB])([0-7])(?:\s+(LED|SW|SWITCH|HIGH|HI|LOW|LO|OPEN))?$/);
+  if(m){const cmd=m[1],P=m[2],i=+m[3],arg=m[4];if(i>=NPIN[P])throw new Error(`PORT${P} has only ${NPIN[P]} pins.`);let msg;
+    if(cmd==='CONNECT'){if(!arg||!/^(LED|SW|SWITCH)$/.test(arg))throw new Error('Use: connect RB0 led  ·  connect RA2 switch');S.CONN[P][i]=arg==='LED'?'LED':'SW';msg=`J1 on ${pinNm(P,i)} now connects the ${S.CONN[P][i]==='LED'?'LED':'switch'}.`}
+    else if(cmd==='PRESS'||cmd==='RELEASE'){S.PRS[P][i]=cmd==='PRESS'?1:0;msg=`Switch on ${pinNm(P,i)} ${cmd==='PRESS'?'pressed':'released'}${S.CONN[P][i]==='LED'?' (J1 selects the LED, so the pin does not see it)':''}.`}
+    else{if(!arg)throw new Error('Use: set RB3 high|low|open');if(/^(OPEN)$/.test(arg)){S.CONN[P][i]='LED'}else{S.CONN[P][i]='SW';S.PRS[P][i]=/^(LOW|LO)$/.test(arg)?1:0}msg=`${pinNm(P,i)}: ${S.CONN[P][i]==='LED'?'LED connected, no input source':'switch connected, '+(S.PRS[P][i]?'pressed (LOW)':'released (HIGH)')}.`}
+    syncExt(S,P,i);logEntry(`<div class="cmd">${esc(t)}</div><div class="nt">${msg}</div>`);
+    view={port:P,bit:i};if(!busy)showIdle();else{renderPins(cur.st)}return true}
+  m=u.match(/^VIEW\s+R([AB])([0-7])$/);
+  if(m){const P=m[1],i=+m[2];if(i>=NPIN[P])throw new Error(`PORT${P} has only ${NPIN[P]} pins.`);view={port:P,bit:i};logEntry(`<div class="cmd">${esc(t)}</div>`);if(!busy)showIdle();return true}
+  if(/^(SET|VIEW|CONNECT|PRESS|RELEASE)\b/.test(u))throw new Error('Use: connect RB0 led|switch · press RA2 · release RA2 · view RB3');
+  return false;
+}
+function doReset(){S=powerOn();view={port:'B',bit:0};lastPlan=null;$('#replayBtn').disabled=true;
+  logEntry('<b>Power-on reset.</b> TRISA = 0x1F and TRISB = 0xFF, so every pin is an input with its output buffer in Hi-Z. PORT latches are unknown (x). STATUS = 0x18: RP0 = 0, bank 0 selected.','sys');
+  showIdle();$('#capPh').textContent='RESET'}
+async function pump(){
+  if(busy)return;busy=true;
+  while(queue.length){
+    const line=queue.shift();
+    try{
+      if(meta(line))continue;
+      const plan=build(line);lastPlan=plan;logPlan(plan);$('#replayBtn').disabled=true;
+      await animate(plan);
+    }catch(e){logEntry(`<div class="cmd">${esc(line)}</div><div class="er">${esc(e.message)}</div>`)}
+  }
+  busy=false;$('#replayBtn').disabled=!lastPlan;showIdle();
+}
+function run(lines){queue.push(...lines);pump()}
+
+/* ---------------- wiring up ---------------- */
+const hist=[];let hi=0;
+$('#cliForm').addEventListener('submit',e=>{e.preventDefault();const v=$('#cli').value.trim();if(!v)return;hist.push(v);hi=hist.length;$('#cli').value='';run([v])});
+$('#cli').addEventListener('keydown',e=>{if(e.key==='ArrowUp'&&hi>0){hi--;$('#cli').value=hist[hi];e.preventDefault()}else if(e.key==='ArrowDown'){if(hi<hist.length-1){hi++;$('#cli').value=hist[hi]}else{hi=hist.length;$('#cli').value=''}e.preventDefault()}});
+$('#nextBtn').addEventListener('click',()=>stepResolve&&stepResolve());
+$('#stepMode').addEventListener('change',()=>{if(!$('#stepMode').checked&&stepResolve)stepResolve()});
+$('#resetBtn').addEventListener('click',()=>{queue=[];if(stepResolve)stepResolve();if(busy){queue.push('reset')}else doReset()});
+$('#replayBtn').addEventListener('click',async()=>{if(busy||!lastPlan)return;busy=true;$('#replayBtn').disabled=true;await animate(lastPlan);busy=false;$('#replayBtn').disabled=false;showIdle()});
+function extChanged(P,i,msg){view={port:P,bit:i};logEntry(`<div class="nt">${msg}</div>`);if(!busy)showIdle();else{renderPins(cur.st);renderCircuit(cur.st,cur.ov,cur.act||[],cur.comps||[])}}
+function cycleExt(P,i){if(S.CONN[P][i]==='LED'){S.CONN[P][i]='SW';S.PRS[P][i]=0}else if(!S.PRS[P][i])S.PRS[P][i]=1;else S.CONN[P][i]='LED';syncExt(S,P,i);
+  extChanged(P,i,`${pinNm(P,i)}: ${S.CONN[P][i]==='LED'?'J1 → LED (output device)':'J1 → switch (input device), '+(S.PRS[P][i]?'pressed → LOW':'released → HIGH')}.`)}
+function toggleJ1(P,i){S.CONN[P][i]=S.CONN[P][i]==='SW'?'LED':'SW';syncExt(S,P,i);
+  extChanged(P,i,`${pinNm(P,i)}: J1 now connects the ${S.CONN[P][i]==='LED'?'<b>LED</b> (output device). The switch is disconnected':'<b>switch</b> (input device). The LED is disconnected'}.`)}
+function toggleSW(P,i){S.PRS[P][i]=S.PRS[P][i]?0:1;syncExt(S,P,i);
+  extChanged(P,i,`${pinNm(P,i)}: switch ${S.PRS[P][i]?'pressed':'released'}${S.CONN[P][i]==='LED'?' (J1 selects the LED, so the pin does not see it)':''}.`)}
+document.querySelectorAll('.pins').forEach(box=>{
+  box.addEventListener('click',e=>{const x=e.target.closest('.ext');if(x){e.stopPropagation();cycleExt(x.dataset.p,+x.dataset.i);return}
+    const p=e.target.closest('.pin');if(!p)return;view={port:p.dataset.p,bit:+p.dataset.i};if(!busy)showIdle();else{render()}});
+  box.addEventListener('keydown',e=>{const p=e.target.closest('.pin');if(p&&e.target===p&&(e.key==='Enter'||e.key===' ')){e.preventDefault();view={port:p.dataset.p,bit:+p.dataset.i};if(!busy)showIdle()}});
+});
+for(const [id,fn] of [['#j1',toggleJ1],['#sw',toggleSW]]){const el=$(id);el.addEventListener('click',()=>fn(view.port,view.bit));
+  el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fn(view.port,view.bit)}})}
+
+const EX=[
+  ['Drive an LED on RB0',['connect RB0 led','view RB0','BCF STATUS,RP0','CLRF PORTB','BSF STATUS,RP0','BCF TRISB,0','BCF STATUS,RP0','BSF PORTB,0']],
+  ['Read a switch on RA2',['connect RA2 switch','press RA2','view RA2','BSF STATUS,RP0','MOVLW 0xFF','MOVWF TRISA','BCF STATUS,RP0','MOVF PORTA,W']],
+  ['Forgot to switch bank',['view RB3','BCF STATUS,RP0','MOVLW 0x00','MOVWF TRISB']],
+  ['Read-modify-write trap',['view RB1','BCF STATUS,RP0','CLRF PORTB','BSF STATUS,RP0','MOVLW 0xFE','MOVWF TRISB','BCF STATUS,RP0','connect RB1 switch','BSF PORTB,0','connect RB1 led','BSF STATUS,RP0','BCF TRISB,1','BCF STATUS,RP0']],
+  ['Open-drain RA4',['connect RA4 led','view RA4','BCF STATUS,RP0','MOVLW 0x10','MOVWF PORTA','BSF STATUS,RP0','BCF TRISA,4','BCF STATUS,RP0','BCF PORTA,4']],
+  ['PORTB weak pull-ups',['connect RB5 led','view RB5','BSF STATUS,RP0','BCF OPTION_REG,RBPU','BCF STATUS,RP0','MOVF PORTB,W']],
+  ['TRIS instruction',['view RB7','MOVLW 0x0F','TRIS PORTB']]
+];
+const exBox=$('#examples');
+EX.forEach(([name,lines])=>{const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=name;b.title=lines.filter(l=>!/^(view|set|connect|press|release)/i.test(l)).join('\n');
+  b.addEventListener('click',()=>{logEntry(`<b>Example: ${esc(name)}</b> · ${lines.length} commands queued.`,'sys');run(lines)});exBox.appendChild(b)});
+
+showIdle();$('#capPh').textContent='RESET';
+$('#cli').value='BSF STATUS,RP0';
+})();
+</script>
+
+</html>
