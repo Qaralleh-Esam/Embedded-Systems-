@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PIC Oscillator Lab</title>
+<meta name="description" content="Interactive PIC16F84A oscillator lab: LP, XT, HS and RC modes and an external clock, with the circuit, OSC1/OSC2 waveforms, Q1–Q4 clocks, CLKOUT and the instruction cycle.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: board + FOSC configuration (left) · circuit over oscilloscope (centre) · numbers and explanation (right).
+   Same lab-bench family as the other PIC labs; one-screen stage on landscape displays. */
+:root{
+  color-scheme:light;
+  --bg:#eef1f4; --panel:#ffffff; --panel-2:#f6f8fa; --ink:#132033; --muted:#5a6879; --rule:#d5dce4; --grid:#e3e8ee;
+  --wire:#3b4a5e; --hi:#d9480f; --lo:#1971c2; --o1:#d9480f; --o2:#1971c2; --clk:#2b8a3e; --q:#7048e8; --co:#c2255c; --cursor:#f59f00;
+  --accent:#0b5cad; --ok:#2b8a3e; --bad:#c92a2a; --warn:#b35c00; --ok-bg:#ebfbee; --bad-bg:#fff0f0; --warn-bg:#fff4e0;
+  --display:'IBM Plex Sans Condensed','Arial Narrow',system-ui,sans-serif;
+  --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0e131a; --panel:#151c26; --panel-2:#1b2431; --ink:#e4eaf2; --muted:#93a1b3; --rule:#2a3546; --grid:#223040;
+  --wire:#8a9ab0; --hi:#ff7b47; --lo:#4dabf7; --o1:#ff7b47; --o2:#4dabf7; --clk:#69db7c; --q:#b197fc; --co:#f783ac; --cursor:#ffc53d;
+  --accent:#6cb2ff; --ok:#69db7c; --bad:#ff8787; --warn:#ffc078; --ok-bg:#12261a; --bad-bg:#2c1416; --warn-bg:#2d2310; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0e131a; --panel:#151c26; --panel-2:#1b2431; --ink:#e4eaf2; --muted:#93a1b3; --rule:#2a3546; --grid:#223040;
+  --wire:#8a9ab0; --hi:#ff7b47; --lo:#4dabf7; --o1:#ff7b47; --o2:#4dabf7; --clk:#69db7c; --q:#b197fc; --co:#f783ac; --cursor:#ffc53d;
+  --accent:#6cb2ff; --ok:#69db7c; --bad:#ff8787; --warn:#ffc078; --ok-bg:#12261a; --bad-bg:#2c1416; --warn-bg:#2d2310; color-scheme:dark }
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);-webkit-font-smoothing:antialiased}
+.app{max-width:1400px;margin:0 auto;padding-block:18px 36px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;margin-bottom:14px}
+.top h1{font-size:clamp(28px,4vw,36px);font-weight:700;line-height:1}
+.top h1 span{color:var(--accent)}
+.kicker{font:600 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0}
+.grid{display:grid;grid-template-columns:340px minmax(0,1fr) 380px;gap:14px;align-items:start}
+.col{display:grid;gap:14px;align-content:start;min-width:0}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;min-width:0}
+.card-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;padding:10px 14px;border-bottom:1px solid var(--rule)}
+.card-h h2{font-size:18px;font-weight:600}
+.sub{font:500 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.pad{padding:12px 14px 14px;display:grid;gap:12px}
+.lbl{font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:4px;display:block}
+.seg{display:flex;flex-wrap:wrap;gap:5px}
+.seg button{border:1px solid var(--rule);background:var(--panel-2);border-radius:6px;padding:5px 10px;font-size:13.5px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.seg button:hover{border-color:var(--accent)}
+.seg.modes button{font-family:var(--mono);font-weight:600;min-width:58px}
+.btn{border:1px solid var(--rule);background:var(--panel-2);border-radius:6px;padding:5px 11px;font-size:13.5px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.sl{display:grid;gap:3px}
+.sl .t{display:flex;justify-content:space-between;font-size:13px}
+.sl b{font:600 13px var(--mono)}
+.sl input{width:100%;accent-color:var(--accent)}
+.cfg{font:500 12.5px var(--mono);background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;padding:7px 9px;word-break:break-word}
+.verdict{border-radius:8px;padding:9px 11px;font-size:13.8px}
+.verdict.ok{background:var(--ok-bg);border:1px solid var(--ok)}
+.verdict.warn{background:var(--warn-bg);border:1px solid var(--warn)}
+.verdict.bad{background:var(--bad-bg);border:1px solid var(--bad)}
+.verdict b:first-child{display:block;margin-bottom:2px}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+
+/* circuit */
+.circwrap{padding:6px 10px 2px}
+#circ{display:block;width:100%;height:auto}
+#circ text{font-family:var(--mono);fill:var(--ink)}
+#circ .lb{font-size:13px;font-weight:600}
+#circ .sm{font-size:11px;fill:var(--muted)}
+#circ .pin{font-size:12px;font-weight:700}
+.w{fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.cmp{fill:var(--panel);stroke:var(--wire);stroke-width:2.2;stroke-linejoin:round}
+.chip{fill:var(--panel-2);stroke:var(--wire);stroke-width:2.2}
+.gl{fill:none;stroke:var(--wire);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.dim{opacity:.32}
+
+/* scope */
+.scopebar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px 14px;border-top:1px solid var(--rule)}
+.scope-wrap{padding:4px 8px 0;overflow-x:auto}
+#scope{display:block;width:100%;min-width:620px;height:430px}
+.ro{font:500 12.5px var(--mono);color:var(--muted)}
+.ro b{color:var(--ink)}
+
+/* info */
+table.nums{border-collapse:collapse;width:100%;font-size:13.5px}
+.nums th{text-align:left;font-weight:500;color:var(--muted);padding:4px 8px 4px 0;white-space:nowrap}
+.nums td{font:600 13.5px var(--mono);text-align:right;padding:4px 0;font-variant-numeric:tabular-nums}
+.nums tr+tr th,.nums tr+tr td{border-top:1px dashed var(--rule)}
+table.modes{border-collapse:collapse;width:100%;font-size:12.6px}
+.modes th,.modes td{padding:5px 6px;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}
+.modes th{font-weight:600;color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em}
+.modes td:first-child{font:700 13px var(--mono)}
+.modes tr.on td{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.how{font-size:13.6px}
+.how p{margin:0 0 8px}
+.how ul{margin:0;padding-left:18px}
+.how li{margin:3px 0}
+.qlist{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:4px}
+.qlist div{border:1px solid var(--rule);border-radius:6px;padding:4px 6px;font-size:12px}
+.qlist b{display:block;font:700 12px var(--mono);color:var(--q)}
+.qlist div.on{border-color:var(--cursor);background:color-mix(in srgb,var(--cursor) 14%,var(--panel))}
+
+@media (max-width:1180px){html:not(.fit) .grid{grid-template-columns:1fr 1fr}html:not(.fit) .col{display:contents}
+  html:not(.fit) .o-circ{grid-column:1/-1;order:1}html:not(.fit) .o-scope{grid-column:1/-1;order:2}html:not(.fit) .o-board{order:3}html:not(.fit) .o-info{order:4}}
+@media (max-width:720px){html:not(.fit) .grid{grid-template-columns:1fr}}
+
+/* ===== One-screen mode: 1600×900 stage scaled to the window ===== */
+html.fit,html.fit body{height:100%;overflow:hidden}
+html.fit .app{position:fixed;left:0;top:0;width:1600px;height:900px;max-width:none;margin:0;padding:14px 16px;transform-origin:0 0;display:flex;flex-direction:column;gap:10px}
+html.fit .top{margin:0;flex:none}
+html.fit .grid{flex:1;min-height:0;grid-template-columns:350px minmax(0,1fr) 400px;align-items:stretch}
+html.fit .col{min-height:0}
+html.fit .col-c{grid-template-rows:auto minmax(0,1fr)}
+html.fit .col-l,html.fit .col-r{grid-template-rows:minmax(0,1fr)}
+html.fit .card{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+html.fit .scroll{flex:1;min-height:0;overflow-y:auto;align-content:start}
+html.fit .scope-wrap{flex:1;min-height:0;overflow:hidden}
+html.fit #scope{height:100%;min-width:0}
+html.fit .circwrap{padding:2px 10px 0}
+html.fit #circ{max-height:310px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>PIC Oscillator <span>Lab</span></h1>
+    <p class="kicker">PIC16F84A · LP, XT, HS, RC and external clock</p>
+  </header>
+
+  <main class="grid">
+    <div class="col col-l">
+      <section class="card o-board" aria-labelledby="bTitle">
+        <div class="card-h"><h2 id="bTitle">Board &amp; configuration</h2></div>
+        <div class="pad scroll">
+          <div><span class="lbl">1 · What is fitted on OSC1 / OSC2</span>
+            <div class="seg" id="partSeg" role="group" aria-label="Clock component"><button type="button" data-v="xtal">Crystal</button><button type="button" data-v="res">Ceramic resonator</button><button type="button" data-v="rc">R–C network</button><button type="button" data-v="ext">External clock</button></div></div>
+          <div id="freqBox"><span class="lbl">Frequency</span><div class="seg" id="freqSeg" role="group" aria-label="Frequency"></div></div>
+          <div id="extBox" class="sl" hidden><div class="t"><label for="sExt">External clock frequency</label><b id="vExt"></b></div><input type="range" id="sExt" min="0" max="1000"></div>
+          <div id="rcBox" hidden style="display:grid;gap:10px">
+            <div class="sl"><div class="t"><label for="sR">R<sub>EXT</sub> (VDD to OSC1)</label><b id="vR"></b></div><input type="range" id="sR" min="0" max="1000"></div>
+            <div class="sl"><div class="t"><label for="sC">C<sub>EXT</sub> (OSC1 to GND)</label><b id="vC"></b></div><input type="range" id="sC" min="0" max="1000"></div>
+            <p class="hint">Datasheet advice: R<sub>EXT</sub> 3–100 kΩ, C<sub>EXT</sub> &gt; 20 pF. The frequency below is approximate: it shifts with VDD, temperature and from chip to chip.</p>
+          </div>
+          <div><span class="lbl">2 · Oscillator mode in the configuration word (FOSC1:FOSC0)</span>
+            <div class="seg modes" id="modeSeg" role="group" aria-label="Oscillator mode"><button type="button" data-v="LP">LP</button><button type="button" data-v="XT">XT</button><button type="button" data-v="HS">HS</button><button type="button" data-v="RC">RC</button></div>
+            <button class="btn" type="button" id="matchBtn" style="margin-top:6px">Pick the right mode for this part</button></div>
+          <div class="cfg" id="cfg"></div>
+          <div class="verdict" id="verdict" role="status"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="col col-c">
+      <section class="card o-circ" aria-labelledby="cTitle">
+        <div class="card-h"><h2 id="cTitle">Circuit</h2><span class="sub" id="cSub"></span></div>
+        <div class="circwrap"><svg id="circ" viewBox="0 0 780 300" role="img" aria-label="Oscillator circuit on the OSC1 and OSC2 pins"></svg></div>
+      </section>
+      <section class="card o-scope" aria-labelledby="sTitle">
+        <div class="card-h"><h2 id="sTitle">Oscilloscope</h2><span class="ro" id="tdiv"></span></div>
+        <div class="scope-wrap"><canvas id="scope" role="img" aria-label="Waveforms on OSC1, OSC2, internal clock, Q1 to Q4, CLKOUT and the instruction pipeline"></canvas></div>
+        <div class="scopebar">
+          <button class="btn" type="button" id="pauseBtn">❚❚ Pause</button>
+          <label class="ro" for="spd">Sweep speed <select id="spd"><option value="0.35">Slow</option><option value="0.7" selected>Normal</option><option value="1.4">Fast</option></select></label>
+          <span class="ro" id="now"></span>
+        </div>
+      </section>
+    </div>
+
+    <div class="col col-r">
+      <section class="card o-info" aria-labelledby="iTitle">
+        <div class="card-h"><h2 id="iTitle">What the numbers mean</h2></div>
+        <div class="pad scroll">
+          <table class="nums" id="nums"></table>
+          <div><span class="lbl">Instruction cycle = 4 oscillator periods</span>
+            <div class="qlist" id="qlist">
+              <div data-q="0"><b>Q1</b>PC + 1</div><div data-q="1"><b>Q2</b>read data</div><div data-q="2"><b>Q3</b>process</div><div data-q="3"><b>Q4</b>write · latch next instr.</div>
+            </div></div>
+          <div class="how" id="how"></div>
+          <div><span class="lbl">The four modes</span>
+            <table class="modes" id="modes">
+              <thead><tr><th>Mode</th><th>Range</th><th>Amplifier</th><th>Use</th></tr></thead>
+              <tbody>
+                <tr data-m="LP"><td>LP</td><td>32–200 kHz</td><td>lowest gain</td><td>32.768 kHz watch crystal, lowest power</td></tr>
+                <tr data-m="XT"><td>XT</td><td>100 kHz–4 MHz</td><td>medium gain</td><td>common crystals and resonators</td></tr>
+                <tr data-m="HS"><td>HS</td><td>4–20 MHz</td><td>highest gain</td><td>fast crystals, highest current</td></tr>
+                <tr data-m="RC"><td>RC</td><td>up to 4 MHz</td><td>no amplifier</td><td>cheapest, least accurate; OSC2 = CLKOUT</td></tr>
+              </tbody>
+            </table></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+const GAIN={LP:1,XT:2,HS:3,RC:0};
+const XTALS=[{f:32768,c:'68–100 pF'},{f:200e3,c:'15–30 pF'},{f:1e6,c:'15–30 pF'},{f:4e6,c:'15–30 pF'},{f:10e6,c:'15–30 pF'},{f:20e6,c:'15–30 pF'}];
+const RES=[{f:455e3,c:'47–100 pF'},{f:2e6,c:'15–68 pF'},{f:4e6,c:'15–68 pF'},{f:8e6,c:'15–68 pF'},{f:16e6,c:'10–47 pF'}];
+const S={part:'xtal',fx:4e6,fr:4e6,fe:1e6,R:4.7,C:100,mode:'XT',playing:true,speed:0.7,t:0};
+const logMap=(x,a,b)=>a*Math.pow(b/a,x/1000),logInv=(v,a,b)=>1000*Math.log(v/a)/Math.log(b/a);
+
+function fmtF(f){return f>=1e6?(+(f/1e6).toFixed(f%1e6?3:0))+' MHz':f>=1e3?(+(f/1e3).toFixed(f===32768?3:(f%1e3?1:0)))+' kHz':f.toFixed(0)+' Hz'}
+function fmtT(s){const a=Math.abs(s);return a>=1e-3?(s*1e3).toPrecision(3)+' ms':a>=1e-6?(s*1e6).toPrecision(3)+' µs':(s*1e9).toPrecision(3)+' ns'}
+function reqMode(f){return f<=200e3?'LP':f<=4e6?'XT':'HS'}
+function fosc(){return S.part==='xtal'?S.fx:S.part==='res'?S.fr:S.part==='ext'?S.fe:1/(1.2*S.R*1e3*S.C*1e-12)}
+
+/* ------------- how the chosen part and mode behave together ------------- */
+function evaluate(){
+  const f=fosc(),m=S.mode,p=S.part,need=reqMode(f);
+  const r={f,run:true,status:'ok',kind:p==='rc'?'rc':p==='ext'?'ext':'xtal',amp:1,clip:0,jit:0,title:'',msg:''};
+  if(p==='xtal'||p==='res'){
+    const name=p==='xtal'?'crystal':'resonator';
+    if(m==='RC'){Object.assign(r,{run:false,status:'bad',title:'No clock',msg:`RC mode removes the inverting amplifier and turns OSC2 into the CLKOUT output, so nothing keeps the ${name} oscillating. The CPU never runs.`});return r}
+    let d=GAIN[m]-GAIN[need];if(f===4e6&&m==='HS')d=0;
+    if(d===0)Object.assign(r,{title:'Correct match',msg:`${m} mode suits a ${fmtF(f)} ${name}. The amplifier gain is enough to sustain oscillation without overdriving the ${name}.`,amp:m==='LP'?0.45:m==='XT'?0.75:0.95,clip:m==='HS'?0.25:0});
+    else if(d>0)Object.assign(r,{status:'warn',title:'Overdriven',amp:1,clip:d>1?0.85:0.55,msg:`${m} has ${d>1?'far ':''}more gain than a ${fmtF(f)} ${name} needs (use ${need}). It will usually run, but the excess drive can push it onto an overtone, make it drift, waste current, and can even damage a small ${f<=200e3?'tuning-fork watch crystal':name}.`});
+    else if(d===-1)Object.assign(r,{status:'warn',title:'Marginal: may not start',amp:0.32,jit:0.35,msg:`${m} has too little gain for a ${fmtF(f)} ${name} (use ${need}). Oscillation is weak and may fail to start, especially at low VDD or low temperature.`});
+    else Object.assign(r,{run:false,status:'bad',title:'No oscillation',msg:`${m} has far too little gain for a ${fmtF(f)} ${name}; it cannot sustain oscillation. Select ${need}.`});
+    if(f>20e6)Object.assign(r,{status:'bad',title:'Too fast',run:false,msg:'The PIC16F84A-20 runs up to 20 MHz.'});
+    return r;
+  }
+  if(p==='rc'){
+    if(m!=='RC')Object.assign(r,{run:false,status:'bad',title:'No clock',msg:`In ${m} mode OSC1/OSC2 expect a crystal or resonator. The R–C network needs RC mode, which adds the internal discharge circuit that turns the capacitor voltage into a clock.`});
+    else if(f>4e6)Object.assign(r,{status:'warn',title:'Above the RC limit',msg:`About ${fmtF(f)}: RC mode is specified up to 4 MHz. Increase R<sub>EXT</sub> or C<sub>EXT</sub>.`});
+    else if(S.R<3||S.C<20)Object.assign(r,{status:'warn',title:'Outside the advised values',msg:'Keep R<sub>EXT</sub> ≥ 3 kΩ and C<sub>EXT</sub> > 20 pF for a stable frequency.'});
+    else Object.assign(r,{title:'Running in RC mode',msg:`About ${fmtF(f)} (approximate). OSC2 outputs CLKOUT = Fosc/4, a square wave at the instruction rate that other chips can use.`});
+    return r;
+  }
+  // external clock
+  if(m==='RC')Object.assign(r,{status:'warn',title:'Not the documented setup',msg:`The datasheet drives OSC1 from an external clock with the LP, XT or HS configuration (${need} for ${fmtF(f)}), leaving OSC2 open.`});
+  else Object.assign(r,{title:'External clock on OSC1',msg:`The clock signal drives OSC1 directly and OSC2 is left open. The datasheet uses the ${need} configuration for ${fmtF(f)}${m!==need?`; you have ${m} selected`:''}.`,status:m===need?'ok':'warn'});
+  if(f>20e6)Object.assign(r,{status:'bad',run:false,title:'Too fast',msg:'The PIC16F84A-20 runs up to 20 MHz.'});
+  return r;
+}
+
+/* ------------- waveforms (t in units of Tosc) ------------- */
+let EV=null;
+function noise(t){return Math.sin(t*12.9898)*Math.sin(t*78.233)*0.5}
+function osc1(t){
+  const r=EV;
+  if(!r.run)return r.kind==='rc'?5.0:2.5;
+  if(r.kind==='ext')return (t%1)<0.5?5:0;
+  if(r.kind==='rc'){const ph=t%1,VL=1.1,VH=3.6;
+    if(ph<0.88){const k=ph/0.88;return 5-(5-VL)*Math.pow((5-VH)/(5-VL),k)}
+    const k=(ph-0.88)/0.12;return VH-(VH-VL)*Math.min(1,k*1.4)}
+  let a=r.amp*1.9,x=Math.sin(2*Math.PI*t);
+  if(r.clip)x=Math.tanh(x*(1+r.clip*3))/Math.tanh(1+r.clip*3);
+  const j=r.jit?r.jit*noise(t)*0.9:0;
+  return 2.5+a*x+j;
+}
+function osc2(t){
+  const r=EV;
+  if(r.kind==='rc'||(r.kind==='ext'&&S.mode==='RC'))return r.run?clkout(t)*5:0;
+  if(r.kind==='ext')return null; // open
+  if(!r.run)return 2.5;
+  let a=Math.min(2.45,r.amp*2.4+(r.clip?0.6:0)),x=-Math.sin(2*Math.PI*t);
+  const g=1+r.clip*7+(S.mode==='HS'?1.5:0);x=Math.tanh(x*g)/Math.tanh(g);
+  const j=r.jit?r.jit*noise(t+3)*0.8:0;
+  return 2.5+a*x+j;
+}
+function clk(t){if(!EV.run)return 0;if(EV.kind==='rc')return (t%1)<0.88?1:0;if(EV.kind==='ext')return (t%1)<0.5?1:0;return osc1(t)>2.5?1:0}
+function qOf(t){return Math.floor(t)%4}
+function clkout(t){return qOf(t)>=2?1:0}
+
+/* ------------- circuit drawing ------------- */
+function hx(c){c=c.replace('#','');if(c.length===3)c=c.split('').map(x=>x+x).join('');return[0,2,4].map(k=>parseInt(c.substr(k,2),16))}
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function vcol(v){if(v===null)return css('--muted');const a=Math.max(0,Math.min(1,v/5)),c1=hx(css('--lo')),c2=hx(css('--hi'));return 'rgb('+c1.map((x,k)=>Math.round(x+(c2[k]-x)*a)).join(',')+')'}
+function drawCirc(t){
+  const r=EV,p=S.part,m=S.mode,v1=osc1(t),v2=osc2(t),ck=clk(t),q=qOf(t);
+  const c1=vcol(v1),c2=vcol(v2),cc=r.run?(ck?css('--clk'):css('--wire')):css('--wire');
+  const ampOn=m!=='RC',xtalLike=p==='xtal'||p==='res';
+  let s='';
+  // chip
+  s+=`<rect class="chip" x="420" y="22" width="340" height="258" rx="5"/><text x="748" y="44" class="lb" text-anchor="end">PIC16F84A</text>`;
+  s+=`<text x="430" y="72" class="pin">OSC1</text><text x="472" y="72" class="sm">pin 16 · CLKIN</text>`;
+  s+=`<text x="430" y="192" class="pin">OSC2</text><text x="430" y="222" class="sm">pin 15 · ${m==='RC'?'CLKOUT':'CLKOUT n/a'}</text>`;
+  // OSC1 internal net -> schmitt -> ÷4
+  s+=`<path class="w" stroke="${c1}" d="M420 80 H520 M520 80 H600"/>`;
+  s+=`<polygon class="cmp" points="600,66 600,94 628,80"/><path class="gl" d="M606 86 h6 v-12 h6 M612 86 h6 v-12" style="stroke-width:1.4"/>`;
+  s+=`<text x="614" y="58" class="sm" text-anchor="middle">buffer</text>`;
+  s+=`<path class="w" stroke="${cc}" d="M628 80 H660"/>`;
+  s+=`<rect class="cmp" x="660" y="58" width="88" height="66" rx="5"/><text x="704" y="80" class="lb" text-anchor="middle">÷ 4</text><text x="704" y="100" class="pin" text-anchor="middle" style="fill:var(--q)">${r.run?'Q'+(q+1):'—'}</text><text x="704" y="116" class="sm" text-anchor="middle">Q1–Q4 → CPU</text>`;
+  if(ampOn){
+    // feedback resistor + inverting amplifier between OSC1 and OSC2
+    const dimA=p==='ext'?' dim':'';
+    s+=`<g class="${dimA}"><path class="w" stroke="${c1}" d="M470 80 V112"/><rect class="cmp" x="462" y="112" width="16" height="44" rx="2"/><text x="452" y="140" class="sm" text-anchor="end">R<tspan font-size="9" dy="2">F</tspan></text><path class="w" stroke="${c2}" d="M470 156 V200"/>`;
+    s+=`<path class="w" stroke="${c1}" d="M540 80 V104"/><polygon class="cmp" points="524,104 556,104 540,138"/><circle cx="540" cy="142" r="4" class="cmp"/><path class="w" stroke="${c2}" d="M540 146 V200"/>`;
+    s+=`<text x="562" y="126" class="sm">inverting amp</text><text x="562" y="140" class="sm">gain: ${m} ${m==='LP'?'(low)':m==='XT'?'(medium)':'(high)'}</text></g>`;
+    s+=`<path class="w" stroke="${c2}" d="M420 200 H540"/>`;
+  }else{
+    // RC mode: discharge transistor on OSC1, OSC2 driven with Fosc/4 from the divider
+    s+=`<path class="w" stroke="${c1}" d="M500 80 V120"/><path class="gl" d="M500 120 L512 132 M500 150 V138 L512 132 M486 132 H500"/><path class="w" stroke="var(--wire)" d="M500 150 V176"/><path class="gl" d="M488 176 H512 M492 182 H508 M497 188 H503"/>`;
+    s+=`<text x="518" y="138" class="sm">discharge</text>`;
+    const co=r.run?clkout(t)*5:0;const cco=vcol(co);
+    s+=`<path class="w" stroke="${cco}" d="M704 124 V200 H420"/><text x="600" y="194" class="sm" text-anchor="middle">CLKOUT = Fosc/4</text>`;
+  }
+  // GND rail outside
+  const gnd='M80 268 H330';
+  // outside parts
+  if(xtalLike){
+    s+=`<path class="w" stroke="${c1}" d="M120 80 H420"/><path class="w" stroke="${c2}" d="M250 200 H420"/>`;
+    // crystal between OSC1 and OSC2 nets at x=250
+    s+=`<path class="w" stroke="${c1}" d="M250 80 V118"/><path class="gl" d="M234 118 H266"/><rect class="cmp" x="238" y="124" width="24" height="30" rx="2"/><path class="gl" d="M234 160 H266"/><path class="w" stroke="${r.kind==='xtal'&&S.part==='xtal'?c2:c2}" d="M250 160 V200"/>`;
+    s+=`<text x="276" y="138" class="lb">${p==='xtal'?'XTAL':'RES'}</text><text x="276" y="154" class="sm">${fmtF(r.f)}</text>`;
+    // Rs on OSC2 line
+    s+=`<rect class="cmp" x="330" y="191" width="40" height="18" rx="2"/><text x="350" y="183" class="sm" text-anchor="middle">R<tspan font-size="9" dy="2">S</tspan><tspan dy="-2"> (optional)</tspan></text>`;
+    // C1, C2
+    const cap=p==='xtal'?(XTALS.find(x=>x.f===S.fx)||{}).c:(RES.find(x=>x.f===S.fr)||{}).c;
+    s+=`<path class="w" stroke="${c1}" d="M120 80 V150"/><path class="gl" d="M104 150 H136 M104 160 H136"/><path class="w" stroke="var(--wire)" d="M120 160 V268"/><text x="142" y="152" class="lb">C1</text><text x="142" y="168" class="sm">${cap||''}</text>`;
+    s+=`<path class="w" stroke="${c2}" d="M200 200 H250 M200 200 V222"/><path class="gl" d="M184 222 H216 M184 232 H216"/><path class="w" stroke="var(--wire)" d="M200 232 V268"/><text x="160" y="226" class="lb" text-anchor="end">C2</text>`;
+    s+=`<circle cx="250" cy="80" r="3.5" fill="${c1}"/><circle cx="250" cy="200" r="3.5" fill="${c2}"/>`;
+    s+=`<path class="w" stroke="var(--wire)" d="${gnd}"/><path class="gl" d="M200 268 V278 M188 278 H212 M192 284 H208 M197 290 H203"/>`;
+  }else if(p==='rc'){
+    s+=`<path class="w" stroke="${c1}" d="M150 80 H420"/>`;
+    s+=`<path class="w" stroke="${vcol(5)}" d="M300 30 V44"/><rect class="cmp" x="292" y="44" width="16" height="28" rx="2"/><path class="w" stroke="${c1}" d="M300 72 V80"/><path class="gl" d="M286 30 H314"/><text x="320" y="34" class="sm">VDD</text>`;
+    s+=`<text x="318" y="62" class="lb">R<tspan font-size="10" dy="2">EXT</tspan></text><text x="372" y="62" class="sm">${S.R.toFixed(S.R<10?1:0)} kΩ</text>`;
+    s+=`<path class="w" stroke="${c1}" d="M150 80 V150"/><path class="gl" d="M134 150 H166 M134 160 H166"/><path class="w" stroke="var(--wire)" d="M150 160 V268"/><text x="172" y="152" class="lb">C<tspan font-size="10" dy="2">EXT</tspan></text><text x="172" y="170" class="sm">${S.C.toFixed(0)} pF</text>`;
+    s+=`<circle cx="300" cy="80" r="3.5" fill="${c1}"/>`;
+    s+=`<path class="w" stroke="${m==='RC'&&r.run?vcol(clkout(t)*5):css('--wire')}" d="M240 200 H420"/><polygon points="240,193 226,200 240,207" fill="var(--wire)"/><text x="230" y="186" class="sm">to other chips (Fosc/4)</text>`;
+    s+=`<path class="w" stroke="var(--wire)" d="M80 268 H220"/><path class="gl" d="M150 268 V278 M138 278 H162 M142 284 H158 M147 290 H153"/>`;
+  }else{
+    s+=`<rect class="cmp" x="90" y="52" width="140" height="56" rx="6"/><text x="160" y="76" class="lb" text-anchor="middle">clock source</text><text x="160" y="96" class="sm" text-anchor="middle">${fmtF(r.f)} · 0–5 V</text>`;
+    s+=`<path class="gl" d="M104 100 h10 v-14 h10 v14 h10 v-14 h10 v14" style="stroke:var(--clk);stroke-width:1.6"/>`;
+    s+=`<path class="w" stroke="${c1}" d="M230 80 H420"/>`;
+    if(m==='RC'){s+=`<path class="w" stroke="${vcol(osc2(t)||0)}" d="M330 200 H420"/><text x="320" y="204" class="sm" text-anchor="end">CLKOUT</text>`}
+    else{s+=`<path class="w" stroke="var(--muted)" d="M380 200 H420"/><path class="gl" d="M370 190 l20 20 M390 190 l-20 20" style="stroke:var(--muted)"/><text x="362" y="204" class="sm" text-anchor="end">OSC2 left open</text>`}
+  }
+  // probe labels
+  s+=`<g font-family="IBM Plex Mono,monospace"><circle cx="400" cy="80" r="9" fill="var(--o1)"/><text x="400" y="84" text-anchor="middle" style="fill:#fff;font-size:10px;font-weight:700">1</text>`;
+  s+=`<circle cx="400" cy="200" r="9" fill="var(--o2)"/><text x="400" y="204" text-anchor="middle" style="fill:#fff;font-size:10px;font-weight:700">2</text></g>`;
+  if(!r.run)s+=`<text x="590" y="262" class="lb" text-anchor="middle" style="fill:var(--bad)">no clock: CPU stopped</text>`;
+  $('#circ').innerHTML=s;
+  $('#cSub').textContent=(p==='xtal'?'crystal':p==='res'?'ceramic resonator':p==='rc'?'R–C network':'external clock')+' · '+m+' mode';
+}
+
+/* ------------- oscilloscope ------------- */
+const cv=$('#scope'),ctx=cv.getContext('2d');let FITK=1;
+const NT=12; // oscillator periods shown (3 instruction cycles)
+function drawScope(cur){
+  const dpr=(window.devicePixelRatio||1)*FITK,W=cv.clientWidth,H=cv.clientHeight;if(!W||!H)return;
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+  const C={ink:css('--ink'),muted:css('--muted'),grid:css('--grid'),rule:css('--rule'),o1:css('--o1'),o2:css('--o2'),clk:css('--clk'),q:css('--q'),co:css('--co'),cur:css('--cursor'),panel:css('--panel'),bad:css('--bad')};
+  const L=112,x0=L,x1=W-12,X=t=>x0+(t/NT)*(x1-x0);
+  const axis=26,top=8,avail=H-top-axis;
+  const anH=avail*0.21,gap=6;
+  const lanes=[];let y=top;
+  lanes.push({k:'o1',y,h:anH,name:'OSC1',col:C.o1});y+=anH+gap;
+  lanes.push({k:'o2',y,h:anH,name:'OSC2',col:C.o2});y+=anH+gap+2;
+  const dh=(top+avail-y)/7;
+  lanes.push({k:'clk',y,h:dh,name:'Internal clock',col:C.clk});y+=dh;
+  for(let i=0;i<4;i++){lanes.push({k:'q'+i,y,h:dh,name:'Q'+(i+1),col:C.q});y+=dh}
+  lanes.push({k:'co',y,h:dh,name:'CLKOUT',col:C.co});y+=dh;
+  lanes.push({k:'ins',y,h:dh,name:'Instruction',col:C.ink});y+=dh;
+  // highlight current Q column
+  if(EV.run){const qs=Math.floor(cur);ctx.fillStyle=C.cur+'22';ctx.fillRect(X(qs),top,X(qs+1)-X(qs),y-top)}
+  // grid: each Tosc, heavier each Tcy
+  for(let i=0;i<=NT;i++){const x=Math.round(X(i))+.5;ctx.strokeStyle=i%4===0?C.rule:C.grid;ctx.lineWidth=i%4===0?1.4:1;ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,y);ctx.stroke()}
+  ctx.font='600 11.5px "IBM Plex Mono",monospace';ctx.textBaseline='middle';
+  lanes.forEach(l=>{ctx.fillStyle=C.ink;ctx.textAlign='left';ctx.fillText(l.name,6,l.y+l.h/2);
+    ctx.strokeStyle=C.grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x0,l.y+l.h+.5);ctx.lineTo(x1,l.y+l.h+.5);ctx.stroke()});
+  const steps=Math.max(400,Math.round((x1-x0)*1.5));
+  // analog lanes
+  for(const l of lanes.slice(0,2)){
+    const Y=v=>l.y+l.h-4-(v/5)*(l.h-8);
+    ctx.fillStyle=C.muted;ctx.font='500 10px "IBM Plex Mono",monospace';ctx.textAlign='right';ctx.fillText('5 V',x0-6,Y(5));ctx.fillText('0',x0-6,Y(0));
+    ctx.setLineDash([3,4]);ctx.strokeStyle=C.grid;ctx.beginPath();ctx.moveTo(x0,Y(2.5));ctx.lineTo(x1,Y(2.5));ctx.stroke();ctx.setLineDash([]);
+    const fn=l.k==='o1'?osc1:osc2;
+    if(fn(0)===null){ctx.fillStyle=C.muted;ctx.textAlign='left';ctx.font='500 12px "IBM Plex Sans",sans-serif';ctx.fillText('open: not connected',x0+10,l.y+l.h/2);continue}
+    ctx.strokeStyle=l.col;ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<=steps;i++){const t=i/steps*NT,v=fn(t);const xx=X(t),yy=Y(v);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)}ctx.stroke();
+    if(EV.kind==='rc'&&l.k==='o1'&&EV.run){ctx.setLineDash([2,3]);ctx.strokeStyle=C.muted;[1.1,3.6].forEach(v=>{ctx.beginPath();ctx.moveTo(x0,Y(v));ctx.lineTo(x1,Y(v));ctx.stroke()});ctx.setLineDash([]);
+      ctx.fillStyle=C.muted;ctx.textAlign='left';ctx.fillText('Vₜₕ high',x1-74,Y(3.6)-7);ctx.fillText('Vₜₕ low',x1-70,Y(1.1)+8)}
+  }
+  // digital lanes
+  const dig=(l,fn)=>{const yH=l.y+4,yL=l.y+l.h-4;ctx.strokeStyle=l.col;ctx.lineWidth=2;ctx.beginPath();let prev=null;
+    for(let i=0;i<=steps;i++){const t=i/steps*NT,v=fn(t),xx=X(t),yy=v?yH:yL;if(prev===null)ctx.moveTo(xx,yy);else if(v!==prev){ctx.lineTo(xx,prev?yH:yL);ctx.lineTo(xx,yy)}else ctx.lineTo(xx,yy);prev=v}ctx.stroke()};
+  dig(lanes[2],clk);
+  for(let i=0;i<4;i++)dig(lanes[3+i],t=>EV.run&&qOf(t)===i?1:0);
+  const coOn=S.mode==='RC'&&EV.kind!=='xtal';
+  if(coOn)dig(lanes[7],t=>EV.run?clkout(t):0);
+  else{ctx.fillStyle=C.muted;ctx.textAlign='left';ctx.font='500 12px "IBM Plex Sans",sans-serif';ctx.fillText(S.mode==='RC'?'no clock, so no CLKOUT':'only in RC mode: here OSC2 belongs to the oscillator',x0+10,lanes[7].y+lanes[7].h/2)}
+  // instruction pipeline row
+  const li=lanes[8];
+  for(let c=0;c<NT/4;c++){const xa=X(c*4)+2,xb=X(c*4+4)-2;ctx.fillStyle=EV.run?C.panel:C.panel;ctx.strokeStyle=C.rule;ctx.lineWidth=1;ctx.beginPath();ctx.roundRect?ctx.roundRect(xa,li.y+3,xb-xa,li.h-6,4):ctx.rect(xa,li.y+3,xb-xa,li.h-6);ctx.fill();ctx.stroke();
+    ctx.fillStyle=EV.run?C.ink:C.muted;ctx.textAlign='center';ctx.font='500 11.5px "IBM Plex Mono",monospace';
+    ctx.fillText(EV.run?`Tcy ${c+1}: fetch I${c+2} · execute I${c+1}`:'stopped',(xa+xb)/2,li.y+li.h/2)}
+  // time axis
+  const Tosc=1/EV.f;ctx.fillStyle=C.muted;ctx.font='500 10.5px "IBM Plex Mono",monospace';ctx.textAlign='center';
+  for(let i=0;i<=NT;i+=2){ctx.textAlign=i===0?'left':i===NT?'right':'center';ctx.fillText(i?fmtT(i*Tosc):'0',X(i),y+12)}
+  // cursor
+  if(EV.run){const xc=Math.round(X(cur))+.5;ctx.strokeStyle=C.cur;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(xc,top);ctx.lineTo(xc,y);ctx.stroke()}
+  if(!EV.run){ctx.fillStyle=C.bad;ctx.font='700 15px "IBM Plex Sans",sans-serif';ctx.textAlign='center';ctx.fillText('No clock: the oscillator is not running',(x0+x1)/2,lanes[2].y+lanes[2].h*1.5)}
+  $('#tdiv').textContent=`${NT} × Tosc = ${fmtT(NT*Tosc)} across · grid = 1 Tosc`;
+}
+
+/* ------------- info panel ------------- */
+function renderInfo(){
+  const r=EV,f=r.f,Tosc=1/f,Tcy=4/f,xtal=r.kind==='xtal';
+  const rows=[['Fosc',fmtF(f)+(r.kind==='rc'?' (approx.)':'')],['Tosc = 1 / Fosc',fmtT(Tosc)],['Tcy = 4 × Tosc',fmtT(Tcy)],['Instruction rate',(f/4/1e6>=0.01?(f/4/1e6).toPrecision(3)+' MIPS':(f/4/1e3).toPrecision(3)+' k instr/s')]];
+  if(S.mode==='RC')rows.push(['CLKOUT on OSC2',fmtF(f/4)]);
+  if(S.mode!=='RC')rows.push(['OST at power-up (1024 Tosc)',fmtT(1024*Tosc)]);
+  $('#nums').innerHTML=rows.map(([a,b])=>`<tr><th>${a}</th><td>${b}</td></tr>`).join('');
+  document.querySelectorAll('#modes tr[data-m]').forEach(tr=>tr.classList.toggle('on',tr.dataset.m===S.mode));
+  let h='';
+  if(r.kind==='xtal')h=`<p><b>Pierce crystal oscillator.</b> The inverting amplifier inside the PIC drives OSC2; R<sub>F</sub> biases it at about VDD/2. The ${S.part==='xtal'?'crystal':'resonator'} with C1 and C2 forms a π-network that adds another 180° of phase shift at exactly one frequency, so the loop oscillates there.</p>
+    <ul><li><b>OSC1 vs OSC2:</b> the two pins swing in opposite directions (180° apart). OSC1 is the smaller amplifier input; OSC2 is the larger output.</li>
+    <li><b>The internal clock</b> is OSC1 squared up by a buffer, then divided by four into Q1–Q4.</li>
+    <li><b>LP, XT, HS</b> only change the amplifier's gain. Too little gain and it will not start; too much and the ${S.part==='xtal'?'crystal':'resonator'} is overdriven.</li>
+    <li><b>R<sub>S</sub></b> (optional) limits drive into low-power or strip-cut crystals.</li></ul>`;
+  else if(r.kind==='rc')h=`<p><b>RC oscillator.</b> C<sub>EXT</sub> charges through R<sub>EXT</sub> toward VDD. When OSC1 reaches the buffer's upper threshold, an internal transistor discharges C<sub>EXT</sub> to the lower threshold, and the cycle repeats. OSC1 is therefore a sawtooth of exponential ramps.</p>
+    <ul><li><b>Frequency</b> ≈ 1 / (k·R·C), with k about 1.2 here as an illustration; the real value varies with VDD, temperature and from part to part, so RC mode is the least accurate.</li>
+    <li><b>OSC2 = CLKOUT</b> = Fosc/4: one period per instruction cycle, useful for synchronising other logic.</li></ul>`;
+  else h=`<p><b>External clock.</b> A ready-made clock signal (an oscillator module or another chip's clock) drives OSC1 directly and OSC2 is left unconnected. The PIC's own amplifier does no work.</p>
+    <ul><li><b>Accuracy</b> is whatever the clock source provides.</li><li><b>Start-up:</b> there is no crystal to wait for, but in LP/XT/HS modes the 1024-cycle start-up timer still runs after power-on.</li></ul>`;
+  h+=`<p style="margin-top:8px"><b>Q1–Q4:</b> every oscillator period advances one Q phase. Four phases make one instruction cycle. While one instruction executes, the next is fetched (a two-stage pipeline), so most instructions take one Tcy.</p>`;
+  $('#how').innerHTML=h;
+}
+
+/* ------------- controls ------------- */
+function renderControls(){
+  [['#partSeg','part'],['#modeSeg','mode']].forEach(([id,k])=>$(id).querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===S[k]))));
+  const list=S.part==='xtal'?XTALS:S.part==='res'?RES:null,cur=S.part==='xtal'?S.fx:S.fr;
+  $('#freqBox').hidden=!list;$('#extBox').hidden=S.part!=='ext';$('#rcBox').hidden=S.part!=='rc';
+  if(list)$('#freqSeg').innerHTML=list.map(x=>`<button type="button" data-f="${x.f}" aria-pressed="${x.f===cur}">${fmtF(x.f)}</button>`).join('');
+  $('#vExt').textContent=fmtF(S.fe);$('#vR').textContent=S.R.toFixed(S.R<10?1:0)+' kΩ';$('#vC').textContent=S.C.toFixed(0)+' pF';
+  $('#sExt').value=logInv(S.fe,32e3,20e6);$('#sR').value=logInv(S.R,1,200);$('#sC').value=logInv(S.C,5,1000);
+  const fb={LP:'_LP_OSC',XT:'_XT_OSC',HS:'_HS_OSC',RC:'_RC_OSC'}[S.mode],bits={LP:'00',XT:'01',HS:'10',RC:'11'}[S.mode];
+  $('#cfg').innerHTML=`__CONFIG ${fb} &amp; _PWRTE_ON &amp; _WDT_OFF<br><span style="color:var(--muted)">FOSC1:FOSC0 = ${bits}</span>`;
+  const v=$('#verdict');v.className='verdict '+EV.status;v.innerHTML=`<b>${EV.title}</b>${EV.msg}`;
+}
+function update(){EV=evaluate();renderControls();renderInfo();frame(true)}
+function seg(id,key){$(id).querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{S[key]=b.dataset.v;update()}))}
+seg('#partSeg','part');seg('#modeSeg','mode');
+$('#freqSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(S.part==='xtal')S.fx=+b.dataset.f;else S.fr=+b.dataset.f;update()});
+$('#sExt').addEventListener('input',e=>{S.fe=logMap(+e.target.value,32e3,20e6);update()});
+$('#sR').addEventListener('input',e=>{S.R=logMap(+e.target.value,1,200);update()});
+$('#sC').addEventListener('input',e=>{S.C=logMap(+e.target.value,5,1000);update()});
+$('#matchBtn').addEventListener('click',()=>{S.mode=S.part==='rc'?'RC':reqMode(fosc());update()});
+$('#pauseBtn').addEventListener('click',()=>{S.playing=!S.playing;$('#pauseBtn').textContent=S.playing?'❚❚ Pause':'▶ Play';if(S.playing)loop()});
+$('#spd').addEventListener('change',e=>{S.speed=+e.target.value});
+
+/* ------------- animation ------------- */
+let last=0,raf=0;
+const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function frame(force){
+  const cur=S.t%NT;drawScope(cur);drawCirc(cur);
+  document.querySelectorAll('#qlist div').forEach(d=>d.classList.toggle('on',EV.run&&+d.dataset.q===qOf(cur)));
+  $('#now').innerHTML=EV.run?`cursor: <b>Q${qOf(cur)+1}</b> of instruction cycle ${Math.floor(cur/4)+1} · OSC1 <b>${osc1(cur).toFixed(2)} V</b>`:'oscillator stopped';
+}
+function loop(ts){
+  if(!S.playing){return}
+  if(ts){const dt=last?(ts-last)/1000:0;last=ts;S.t+=dt*S.speed*1.6}
+  frame();raf=requestAnimationFrame(loop);
+}
+/* ------------- fit to screen ------------- */
+const DW=1600,DH=900;
+function fit(){const app=$('.app'),vw=window.innerWidth,vh=window.innerHeight,on=vw>=760&&vw/vh>=1.1;
+  document.documentElement.classList.toggle('fit',on);
+  if(on){const k=Math.min(vw/DW,vh/DH);FITK=k;app.style.transform=`scale(${k})`;app.style.left=Math.max(0,(vw-DW*k)/2)+'px';app.style.top=Math.max(0,(vh-DH*k)/2)+'px'}
+  else{FITK=1;app.style.transform='';app.style.left='';app.style.top=''}
+  if(EV)frame(true)}
+window.addEventListener('resize',fit);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>fit());
+if(window.matchMedia)window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>frame(true));
+
+S.t=2.3;update();fit();
+if(reduce){S.playing=false;$('#pauseBtn').textContent='▶ Play'}else loop();
+})();
+</script>
+</body>
+</html>
