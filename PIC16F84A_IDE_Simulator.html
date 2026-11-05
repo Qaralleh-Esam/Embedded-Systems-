@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PIC IDE Simulator</title>
+<meta name="description" content="Browser-based PIC16F84A IDE simulator: assemble code and step through it with Special Function Registers, File Registers, Disassembly Listing and Hardware Stack windows.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* A single, deliberate desktop-IDE look (light only): grey chrome, navy window title bars, white panes, red for changed values.
+   Layout: editor + output (left) · disassembly (centre) · SFRs, file registers, stack (right). */
+:root{
+  color-scheme:light;
+  --desk:#c9d1db; --chrome:#e9edf2; --chrome-2:#dfe5ec; --edge:#9aa7b6; --pane:#ffffff; --ink:#111a26; --muted:#5b6878;
+  --title1:#24456f; --title2:#3d6aa3; --titlei:#7f8ea2; --sel:#cfe2ff; --cur:#fff3a8; --chg:#d10000; --brk:#c92a2a; --ok:#1f7a33;
+  --kw:#0033b3; --dir:#7a1fa2; --num:#a33a00; --cmt:#2e7d32; --lab:#8a0050; --str:#6b4e00;
+  --mono:'IBM Plex Mono',Consolas,'Courier New',ui-monospace,monospace;
+  --ui:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--desk)}
+body{margin:0;color:var(--ink);font:13px/1.35 var(--ui);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--title2);outline-offset:1px}
+.ide{display:flex;flex-direction:column;background:var(--chrome);border:1px solid var(--edge);min-height:100vh;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+.apptitle{display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;background:linear-gradient(#2c4f7e,#1e3b61);color:#fff;font-weight:600;font-size:13px;flex:none}
+.apptitle .logo{width:16px;height:16px;border-radius:3px;background:#f0b429;display:grid;place-items:center;color:#1e3b61;font:700 10px var(--mono)}
+.apptitle .r{margin-left:auto;font-weight:400;opacity:.8;font-size:12px}
+.menubar{display:flex;gap:2px;height:26px;align-items:center;padding:0 6px;background:var(--chrome);border-bottom:1px solid var(--chrome-2);flex:none;position:relative;z-index:30}
+.menu{position:relative}
+.menu>button{border:0;background:none;padding:3px 9px;border-radius:3px;cursor:pointer}
+.menu>button:hover,.menu.open>button{background:var(--sel)}
+.drop{position:absolute;left:0;top:100%;min-width:230px;background:var(--pane);border:1px solid var(--edge);box-shadow:2px 3px 8px rgba(0,0,0,.18);padding:3px 0;display:none}
+.menu.open .drop{display:block}
+.drop button{display:flex;justify-content:space-between;gap:20px;width:100%;border:0;background:none;padding:5px 14px;text-align:left;cursor:pointer}
+.drop button:hover{background:var(--sel)}
+.drop .k{color:var(--muted)}
+.drop hr{border:0;border-top:1px solid var(--chrome-2);margin:3px 0}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:2px 2px;padding:4px 6px;background:var(--chrome);border-bottom:1px solid var(--edge);flex:none}
+.tb{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 8px;border:1px solid transparent;border-radius:3px;background:none;cursor:pointer;font-size:12.5px}
+.tb:hover{border-color:var(--edge);background:var(--pane)}
+.tb[disabled]{opacity:.4;cursor:default}
+.tb svg{width:16px;height:16px;flex:none}
+.sep{width:1px;height:22px;background:var(--edge);margin:0 6px}
+.tbsel{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.tbsel select{border:1px solid var(--edge);background:var(--pane);border-radius:3px;padding:2px 4px}
+
+.desk{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.95fr) minmax(0,1fr);gap:6px;padding:6px;background:var(--desk);position:relative}
+.colw{display:grid;gap:6px;min-height:0;min-width:0}
+.win{display:flex;flex-direction:column;background:var(--pane);border:1px solid var(--edge);box-shadow:1px 1px 0 rgba(0,0,0,.08);min-height:0;min-width:0}
+.wt{display:flex;align-items:center;gap:6px;height:24px;padding:0 4px 0 8px;background:linear-gradient(var(--title2),var(--title1));color:#fff;font-size:12.5px;font-weight:600;flex:none;user-select:none}
+.win.dim .wt{background:linear-gradient(#a9b5c4,var(--titlei))}
+.wt .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wt button{width:20px;height:18px;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.12);color:#fff;border-radius:2px;font:600 11px var(--mono);cursor:pointer;line-height:1;padding:0}
+.wt button:hover{background:rgba(255,255,255,.3)}
+.wb{flex:1;min-height:0;overflow:auto;position:relative}
+.win.max{position:absolute;inset:6px;z-index:20}
+
+/* editor */
+.edwrap{position:relative;display:flex;height:100%;min-height:260px;font:13px/18px var(--mono)}
+.gut{flex:none;width:58px;background:#f3f5f8;border-right:1px solid var(--chrome-2);color:#8a96a6;text-align:right;padding:4px 0;overflow:hidden;user-select:none;cursor:pointer}
+.gut div{height:18px;padding-right:6px;position:relative;white-space:nowrap}
+.gut .bp::before{content:"B";position:absolute;left:5px;top:1px;width:15px;height:15px;border-radius:50%;background:var(--brk);color:#fff;font:700 10px/15px var(--mono);text-align:center}
+.gut .pc::after{content:"";position:absolute;left:22px;top:3px;border:6px solid transparent;border-left:9px solid #18a33a}
+.edin{position:relative;flex:1;min-width:0;overflow:hidden}
+.edin pre,.edin textarea{position:absolute;inset:0;margin:0;padding:4px 8px;font:13px/18px var(--mono);white-space:pre;tab-size:8;border:0;overflow:auto}
+.edin pre{pointer-events:none;color:var(--ink)}
+.edin textarea{background:transparent;color:transparent;caret-color:#000;resize:none;outline:none}
+.edin textarea::selection{background:rgba(0,90,200,.25);color:transparent}
+.edin pre .ln{display:block;height:18px}
+.edin pre .ln.cur{background:var(--cur)}
+.edin pre .ln.err{background:#ffe3e3}
+.k{color:var(--kw);font-weight:600}.d{color:var(--dir);font-weight:600}.n{color:var(--num)}.c{color:var(--cmt);font-style:italic}.l{color:var(--lab);font-weight:600}.s{color:var(--str)}
+
+/* tables */
+table.g{border-collapse:collapse;width:100%;font:12.5px/1.3 var(--mono);font-variant-numeric:tabular-nums}
+.g th{position:sticky;top:0;background:var(--chrome);border-bottom:1px solid var(--edge);border-right:1px solid var(--chrome-2);font:600 11.5px var(--ui);text-align:left;padding:3px 6px;z-index:2;white-space:nowrap}
+.g td{padding:1px 6px;border-right:1px solid #eef1f4;white-space:nowrap}
+.g tr:nth-child(even) td{background:#fafbfc}
+.g td.chg{color:var(--chg);font-weight:600}
+.g tr.cur td{background:var(--cur)!important}
+.g tr.bp td:first-child{color:#fff;background:var(--brk)!important}
+.g td.ed{cursor:text}
+.g td input{width:46px;font:12.5px var(--mono);border:1px solid var(--title2);padding:0 2px}
+.dis td.src{color:var(--muted)}
+.dis tr.hdr td{background:var(--chrome)!important;color:var(--muted);font-weight:600}
+.dis td.op{color:#0b4f8a}
+.fr td.a{background:var(--chrome)!important;color:var(--muted);font-weight:600}
+.fr td.na{color:#c3cad3}
+.fr td.sfr{color:#4a5b70}
+.fr td{padding:1px 3px;text-align:center}
+.fr th{text-align:center;padding:3px 2px}
+.stk td.tos{color:#18a33a;font-weight:700}
+.out{font:12.5px/1.45 var(--mono);padding:4px 8px;white-space:pre-wrap}
+.out .e{color:var(--brk);cursor:pointer}.out .w{color:#9a5b00;cursor:pointer}.out .m{color:#3b5b8a;cursor:pointer}.out .ok{color:var(--ok);font-weight:600}.out .e:hover,.out .w:hover,.out .m:hover{text-decoration:underline}
+.tabs{display:flex;gap:2px;padding:3px 6px 0;background:var(--chrome);border-bottom:1px solid var(--edge);flex:none}
+.tabs button{border:1px solid var(--edge);border-bottom:0;background:var(--chrome-2);padding:2px 10px;font-size:12px;border-radius:3px 3px 0 0;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--pane)}
+.status{display:flex;flex-wrap:wrap;gap:0;height:24px;align-items:stretch;background:var(--chrome);border-top:1px solid var(--edge);font:12px var(--mono);flex:none}
+.status span{display:flex;align-items:center;padding:0 10px;border-right:1px solid var(--edge);white-space:nowrap}
+.status b{font-weight:600}
+.status .st-run{color:#fff;background:#18a33a}.status .st-halt{background:#ffe08a}.status .st-break{color:#fff;background:var(--brk)}.status .st-sleep{background:#cfd8e3}
+.status .zero{border:1px solid var(--edge);background:var(--pane);border-radius:2px;margin-left:6px;font:11px var(--ui);cursor:pointer;padding:0 5px}
+.pins{display:flex;flex-wrap:wrap;gap:8px 16px;padding:6px 8px;font:12px var(--mono);border-top:1px solid var(--chrome-2)}
+.pins .grp{display:flex;align-items:center;gap:3px}
+.pin{width:20px;height:20px;border-radius:50%;border:1px solid var(--edge);display:grid;place-items:center;font:600 9px var(--mono);cursor:pointer;background:#fff;color:var(--muted)}
+.pin.out{cursor:default}
+.pin.h{background:#e8590c;color:#fff;border-color:#c64600}
+.pin.in.h{background:#1c7ed6;border-color:#1864ab}
+.dlg{position:fixed;inset:0;background:rgba(10,20,35,.35);display:grid;place-items:center;z-index:100}
+.dlg>div{background:var(--pane);border:1px solid var(--edge);box-shadow:0 10px 30px rgba(0,0,0,.3);max-width:520px;width:calc(100% - 32px)}
+.dlg .bd{padding:14px 16px;font-size:13.5px}
+.dlg .bd p{margin:0 0 8px}
+.dlg .ft{display:flex;justify-content:flex-end;padding:8px 12px;border-top:1px solid var(--chrome-2);background:var(--chrome)}
+.dlg button.ok{border:1px solid var(--edge);background:var(--pane);padding:4px 16px;border-radius:3px;cursor:pointer}
+
+@media (max-width:1100px){html:not(.fit) .desk{grid-template-columns:1fr}html:not(.fit) .win{min-height:260px}html:not(.fit) .wb{max-height:520px}}
+/* ===== One-screen mode: 1600×900 stage scaled to the window ===== */
+html.fit,html.fit body{height:100%;overflow:hidden}
+html.fit .ide{position:fixed;left:0;top:0;width:1600px;height:900px;min-height:0;transform-origin:0 0}
+html.fit .colw.c1{grid-template-rows:minmax(0,1fr) 200px}
+html.fit .colw.c2{grid-template-rows:minmax(0,1fr)}
+html.fit .colw.c3{grid-template-rows:minmax(0,1fr) minmax(0,1.05fr) auto}
+</style>
+</head>
+<body>
+<div class="ide" id="ide">
+  <div class="apptitle"><span class="logo">μ</span><span id="appTitle">PIC IDE Simulator — source.asm</span><span class="r">PIC16F84A · teaching simulator</span></div>
+  <nav class="menubar" id="menubar" aria-label="Menu">
+    <div class="menu"><button type="button">File</button><div class="drop">
+      <button type="button" data-act="new">New</button>
+      <hr><button type="button" data-act="sample0">Open sample: LED pattern + subroutines</button>
+      <button type="button" data-act="sample1">Open sample: indirect addressing (FSR/INDF)</button>
+      <button type="button" data-act="sample2">Open sample: Timer0 interrupt</button>
+    </div></div>
+    <div class="menu"><button type="button">Project</button><div class="drop">
+      <button type="button" data-act="build">Build All <span class="k">Ctrl+F10</span></button>
+    </div></div>
+    <div class="menu"><button type="button">Debugger</button><div class="drop">
+      <button type="button" data-act="run">Run <span class="k">F9</span></button>
+      <button type="button" data-act="animate">Animate</button>
+      <button type="button" data-act="halt">Halt <span class="k">F5</span></button>
+      <button type="button" data-act="step">Step Into <span class="k">F7</span></button>
+      <button type="button" data-act="over">Step Over <span class="k">F8</span></button>
+      <button type="button" data-act="out">Step Out</button>
+      <button type="button" data-act="reset">Reset <span class="k">F6</span></button>
+      <hr><button type="button" data-act="clrbp">Clear all breakpoints</button>
+      <button type="button" data-act="zero">Zero the stopwatch</button>
+    </div></div>
+    <div class="menu"><button type="button">View</button><div class="drop">
+      <button type="button" data-act="vEditor">Editor</button><button type="button" data-act="vDis">Disassembly Listing</button><button type="button" data-act="vSfr">Special Function Registers</button><button type="button" data-act="vRam">File Registers</button><button type="button" data-act="vStk">Hardware Stack</button><button type="button" data-act="vOut">Output</button>
+      <hr><button type="button" data-act="tile">Restore tiled layout</button>
+    </div></div>
+    <div class="menu"><button type="button">Help</button><div class="drop">
+      <button type="button" data-act="help">How to use this simulator</button>
+      <button type="button" data-act="about">About</button>
+    </div></div>
+  </nav>
+  <div class="toolbar" role="toolbar" aria-label="Debugger toolbar">
+    <button class="tb" type="button" data-act="build" title="Build All (Ctrl+F10)"><svg viewBox="0 0 16 16"><rect x="2" y="7" width="12" height="7" rx="1" fill="#6b7a8c"/><rect x="4" y="3" width="8" height="5" rx="1" fill="#f0b429"/></svg>Build All</button>
+    <span class="sep"></span>
+    <button class="tb" type="button" data-act="run" id="bRun" title="Run (F9)"><svg viewBox="0 0 16 16"><path d="M4 2l10 6-10 6z" fill="#18a33a"/></svg>Run</button>
+    <button class="tb" type="button" data-act="halt" id="bHalt" title="Halt (F5)"><svg viewBox="0 0 16 16"><rect x="3" y="3" width="4" height="10" fill="#1c5fb8"/><rect x="9" y="3" width="4" height="10" fill="#1c5fb8"/></svg>Halt</button>
+    <button class="tb" type="button" data-act="animate" id="bAnim" title="Animate"><svg viewBox="0 0 16 16"><path d="M2 3l6 5-6 5zM8 3l6 5-6 5z" fill="#18a33a"/></svg>Animate</button>
+    <button class="tb" type="button" data-act="step" title="Step Into (F7)"><svg viewBox="0 0 16 16"><path d="M8 2v8M5 7l3 3 3-3" stroke="#1c5fb8" stroke-width="2" fill="none"/><rect x="3" y="12" width="10" height="2" fill="#6b7a8c"/></svg>Step Into</button>
+    <button class="tb" type="button" data-act="over" title="Step Over (F8)"><svg viewBox="0 0 16 16"><path d="M3 9a5 5 0 0 1 10 0" stroke="#1c5fb8" stroke-width="2" fill="none"/><path d="M11 6l2 3 2-3" fill="#1c5fb8"/><rect x="3" y="12" width="10" height="2" fill="#6b7a8c"/></svg>Step Over</button>
+    <button class="tb" type="button" data-act="out" title="Step Out"><svg viewBox="0 0 16 16"><path d="M8 13V5M5 8l3-3 3 3" stroke="#1c5fb8" stroke-width="2" fill="none"/><rect x="3" y="2" width="10" height="2" fill="#6b7a8c"/></svg>Step Out</button>
+    <button class="tb" type="button" data-act="reset" title="Reset (F6)"><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6" stroke="#c92a2a" stroke-width="2" fill="none"/><path d="M12 1v4H8" fill="none" stroke="#c92a2a" stroke-width="2"/></svg>Reset</button>
+    <span class="sep"></span>
+    <button class="tb" type="button" data-act="clrbp" title="Clear all breakpoints"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="#c92a2a"/><path d="M5 11l6-6" stroke="#fff" stroke-width="2"/></svg>Clear BPs</button>
+    <span class="sep"></span>
+    <label class="tbsel" for="fosc">Processor <b style="color:var(--ink)">PIC16F84A</b> · Fosc <select id="fosc"><option value="32768">32.768 kHz</option><option value="4000000" selected>4 MHz</option><option value="10000000">10 MHz</option><option value="20000000">20 MHz</option></select></label>
+    <label class="tbsel" for="animSpd" style="margin-left:10px">Animate <select id="animSpd"><option value="700">slow</option><option value="300" selected>normal</option><option value="90">fast</option></select></label>
+  </div>
+
+  <div class="desk" id="desk">
+    <div class="colw c1">
+      <section class="win" id="wEditor" aria-label="Editor">
+        <div class="wt"><span class="t" id="edTitle">source.asm</span><button type="button" class="mx" title="Maximize">□</button></div>
+        <div class="wb" style="overflow:hidden">
+          <div class="edwrap"><div class="gut" id="gut" title="Click a line number to set or clear a breakpoint"></div><div class="edin"><pre id="hl" aria-hidden="true"></pre><textarea id="src" spellcheck="false" aria-label="Assembly source code" autocomplete="off" autocapitalize="off"></textarea></div></div>
+        </div>
+      </section>
+      <section class="win" id="wOut" aria-label="Output">
+        <div class="wt"><span class="t">Output</span><button type="button" class="mx" title="Maximize">□</button></div>
+        <div class="tabs" role="tablist"><button type="button" role="tab" aria-selected="true">Build</button></div>
+        <div class="wb"><div class="out" id="out" aria-live="polite"></div></div>
+      </section>
+    </div>
+    <div class="colw c2">
+      <section class="win" id="wDis" aria-label="Disassembly Listing">
+        <div class="wt"><span class="t">Disassembly Listing</span><button type="button" class="mx" title="Maximize">□</button></div>
+        <div class="wb"><table class="g dis" id="dis"></table></div>
+      </section>
+    </div>
+    <div class="colw c3">
+      <section class="win" id="wSfr" aria-label="Special Function Registers">
+        <div class="wt"><span class="t">Special Function Registers</span><button type="button" class="mx" title="Maximize">□</button></div>
+        <div class="wb"><table class="g" id="sfr"></table></div>
+      </section>
+      <section class="win" id="wRam" aria-label="File Registers">
+        <div class="wt"><span class="t">File Registers</span><button type="button" class="mx" title="Maximize">□</button></div>
+        <div class="wb"><table class="g fr" id="ram"></table></div>
+      </section>
+      <section class="win" id="wStk" aria-label="Hardware Stack">
+        <div class="wt"><span class="t">Hardware Stack</span><button type="button" class="mx" title="Maximize">□</button></div>
+        <div class="wb"><table class="g stk" id="stk"></table>
+          <div class="pins" id="pins" aria-label="Port pins"></div></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="status" id="status"></div>
+</div>
+<div class="dlg" id="dlg" hidden><div role="dialog" aria-modal="true" aria-labelledby="dlgT"><div class="wt"><span class="t" id="dlgT"></span></div><div class="bd" id="dlgB"></div><div class="ft"><button type="button" class="ok" id="dlgOk">OK</button></div></div></div>
+
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+const H2=v=>(v&255).toString(16).toUpperCase().padStart(2,'0');
+const H3=v=>v.toString(16).toUpperCase().padStart(3,'0');
+const H4=v=>v.toString(16).toUpperCase().padStart(4,'0');
+const B8=v=>(v&255).toString(2).padStart(8,'0');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ===================== samples ===================== */
+const SAMPLES=[
+`;-----------------------------------------------------------
+; LED pattern on PORTB using a lookup table and nested calls
+;-----------------------------------------------------------
+        LIST    P=16F84A
+        #include <p16f84a.inc>
+        __CONFIG _XT_OSC & _WDT_OFF & _PWRTE_ON
+
+        CBLOCK  0x0C
+          COUNT                 ; pattern index 0..3
+          DLY                   ; delay counter
+          DLY2
+        ENDC
+
+        ORG     0x000
+        GOTO    START
+        ORG     0x004
+        RETFIE                  ; no interrupts used
+
+START   BSF     STATUS,RP0      ; bank 1
+        CLRF    TRISB           ; PORTB = all outputs
+        BCF     STATUS,RP0      ; back to bank 0
+        CLRF    COUNT
+LOOP    MOVF    COUNT,W
+        CALL    TABLE           ; W = bit pattern
+        MOVWF   PORTB
+        CALL    DELAY
+        INCF    COUNT,F
+        MOVLW   .4
+        SUBWF   COUNT,W         ; Z = 1 when COUNT = 4
+        BTFSC   STATUS,Z
+        CLRF    COUNT
+        GOTO    LOOP
+
+TABLE   ADDWF   PCL,F           ; computed jump
+        RETLW   b'00000001'
+        RETLW   b'00000010'
+        RETLW   b'00000100'
+        RETLW   b'00001000'
+
+DELAY   MOVLW   .3
+        MOVWF   DLY
+DLOOP   CALL    SHORT           ; second stack level
+        DECFSZ  DLY,F
+        GOTO    DLOOP
+        RETURN
+
+SHORT   MOVLW   .2
+        MOVWF   DLY2
+SLOOP   DECFSZ  DLY2,F
+        GOTO    SLOOP
+        RETURN
+
+        END
+`,
+`;-----------------------------------------------------------
+; Indirect addressing: clear then fill 8 RAM bytes via FSR/INDF
+;-----------------------------------------------------------
+        LIST    P=16F84A
+        #include <p16f84a.inc>
+        __CONFIG _XT_OSC & _WDT_OFF & _PWRTE_ON
+
+BUF     EQU     0x20            ; 8-byte buffer at 0x20..0x27
+N       EQU     0x0C
+
+        ORG     0x000
+START   MOVLW   BUF
+        MOVWF   FSR             ; FSR points at the buffer
+        MOVLW   .8
+        MOVWF   N
+FILL    MOVF    FSR,W           ; value = its own address
+        MOVWF   INDF            ; write through the pointer
+        INCF    FSR,F
+        DECFSZ  N,F
+        GOTO    FILL
+        MOVLW   BUF
+        MOVWF   FSR
+        COMF    INDF,F          ; invert the first byte
+DONE    GOTO    DONE
+        END
+`,
+`;-----------------------------------------------------------
+; Timer0 interrupt: toggles RB0 on every TMR0 overflow
+;-----------------------------------------------------------
+        LIST    P=16F84A
+        #include <p16f84a.inc>
+        __CONFIG _XT_OSC & _WDT_OFF & _PWRTE_ON
+
+        CBLOCK  0x0C
+          W_TEMP
+          S_TEMP
+          TICKS
+        ENDC
+
+        ORG     0x000
+        GOTO    MAIN
+        ORG     0x004           ; interrupt vector
+ISR     MOVWF   W_TEMP          ; save context
+        SWAPF   STATUS,W
+        MOVWF   S_TEMP
+        BCF     INTCON,T0IF     ; clear the flag
+        MOVLW   0x01
+        XORWF   PORTB,F         ; toggle RB0
+        INCF    TICKS,F
+        SWAPF   S_TEMP,W        ; restore context
+        MOVWF   STATUS
+        SWAPF   W_TEMP,F
+        SWAPF   W_TEMP,W
+        RETFIE
+
+MAIN    BSF     STATUS,RP0
+        CLRF    TRISB
+        MOVLW   b'00000000'     ; TMR0 from Fosc/4, prescaler 1:2
+        MOVWF   OPTION_REG
+        BCF     STATUS,RP0
+        CLRF    PORTB
+        CLRF    TMR0
+        BSF     INTCON,T0IE
+        BSF     INTCON,GIE
+IDLE    NOP
+        GOTO    IDLE
+        END
+`];
+
+/* ===================== device model ===================== */
+const SFRDEF=[ // name, bank0 addr (f), bank1 addr or null
+  ['INDF',0x00,0x80],['TMR0',0x01,null],['PCL',0x02,0x82],['STATUS',0x03,0x83],['FSR',0x04,0x84],['PORTA',0x05,null],['PORTB',0x06,null],
+  ['EEDATA',0x08,null],['EEADR',0x09,null],['PCLATH',0x0A,0x8A],['INTCON',0x0B,0x8B],['OPTION_REG',null,0x81],['TRISA',null,0x85],['TRISB',null,0x86],['EECON1',null,0x88],['EECON2',null,0x89]];
+const INC={INDF:0,TMR0:1,PCL:2,STATUS:3,FSR:4,PORTA:5,PORTB:6,EEDATA:8,EEADR:9,PCLATH:0xA,INTCON:0xB,OPTION_REG:0x81,TRISA:0x85,TRISB:0x86,EECON1:0x88,EECON2:0x89,
+  W:0,F:1,IRP:7,RP1:6,RP0:5,NOT_TO:4,NOT_PD:3,Z:2,DC:1,C:0,GIE:7,EEIE:6,T0IE:5,INTE:4,RBIE:3,T0IF:2,INTF:1,RBIF:0,NOT_RBPU:7,INTEDG:6,T0CS:5,T0SE:4,PSA:3,PS2:2,PS1:1,PS0:0,
+  EEIF:4,WRERR:3,WREN:2,WR:1,RD:0,TOIE:5,TOIF:2,
+  _CP_ON:0x000F,_CP_OFF:0x3FFF,_PWRTE_ON:0x3FF7,_PWRTE_OFF:0x3FFF,_WDT_ON:0x3FFF,_WDT_OFF:0x3FFB,_LP_OSC:0x3FFC,_XT_OSC:0x3FFD,_HS_OSC:0x3FFE,_RC_OSC:0x3FFF};
+const NAMES={0:'INDF',1:'TMR0',2:'PCL',3:'STATUS',4:'FSR',5:'PORTA',6:'PORTB',8:'EEDATA',9:'EEADR',0xA:'PCLATH',0xB:'INTCON',0x81:'OPTION_REG',0x85:'TRISA',0x86:'TRISB',0x88:'EECON1',0x89:'EECON2'};
+const MIRROR=new Set([0,2,3,4,0xA,0xB]);
+
+/* ===================== assembler ===================== */
+const OPS={
+  ADDWF:['fd',0x0700],ANDWF:['fd',0x0500],CLRF:['f',0x0180],CLRW:['-',0x0100],COMF:['fd',0x0900],DECF:['fd',0x0300],DECFSZ:['fd',0x0B00],INCF:['fd',0x0A00],INCFSZ:['fd',0x0F00],
+  IORWF:['fd',0x0400],MOVF:['fd',0x0800],MOVWF:['f',0x0080],NOP:['-',0x0000],RLF:['fd',0x0D00],RRF:['fd',0x0C00],SUBWF:['fd',0x0200],SWAPF:['fd',0x0E00],XORWF:['fd',0x0600],
+  BCF:['fb',0x1000],BSF:['fb',0x1400],BTFSC:['fb',0x1800],BTFSS:['fb',0x1C00],
+  ADDLW:['k',0x3E00],ANDLW:['k',0x3900],CALL:['a',0x2000],CLRWDT:['-',0x0064],GOTO:['a',0x2800],IORLW:['k',0x3800],MOVLW:['k',0x3000],RETFIE:['-',0x0009],RETLW:['k',0x3400],
+  RETURN:['-',0x0008],SLEEP:['-',0x0063],SUBLW:['k',0x3C00],XORLW:['k',0x3A00]};
+const DIRS=new Set(['LIST','#INCLUDE','INCLUDE','__CONFIG','ORG','EQU','CBLOCK','ENDC','END','RADIX','ERRORLEVEL','DT','BANKSEL','PAGESEL','PROCESSOR','#DEFINE','__IDLOCS','SET','CONSTANT']);
+
+function splitArgs(s){const out=[];let cur='',q=null;for(const ch of s){if(q){cur+=ch;if(ch===q)q=null}else if(ch==="'"||ch==='"'){q=ch;cur+=ch}else if(ch===','){out.push(cur.trim());cur=''}else cur+=ch}if(cur.trim().length)out.push(cur.trim());return out}
+function stripComment(s){let q=null;for(let i=0;i<s.length;i++){const ch=s[i];if(q){if(ch===q)q=null}else if(ch==="'"||ch==='"')q=ch;else if(ch===';')return s.slice(0,i)}return s}
+
+function evalExpr(src,sym,pc,errs,line){
+  const s=src.trim();let i=0;
+  const peek=()=>s[i],ws=()=>{while(s[i]===' '||s[i]==='\t')i++};
+  function num(){
+    ws();const rest=s.slice(i);let m;
+    const tryRe=(re,base,grp=1)=>{m=rest.match(re);if(m){i+=m[0].length;return parseInt(m[grp],base)}return null};
+    let v;
+    if((v=tryRe(/^0x([0-9a-f]+)/i,16))!==null)return v;
+    if((v=tryRe(/^[hH]'([0-9a-fA-F]+)'/,16))!==null)return v;
+    if((v=tryRe(/^[bB]'([01]+)'/,2))!==null)return v;
+    if((v=tryRe(/^[dD]'(\d+)'/,10))!==null)return v;
+    if((v=tryRe(/^[oO]'([0-7]+)'/,8))!==null)return v;
+    if((v=tryRe(/^\.(\d+)/,10))!==null)return v;
+    m=rest.match(/^'(.)'/);if(m){i+=3;return m[1].charCodeAt(0)}
+    if((v=tryRe(/^([0-9][0-9a-fA-F]*)[hH](?![0-9a-zA-Z_])/,16))!==null)return v;
+    if((v=tryRe(/^([01]+)[bB](?![0-9a-zA-Z_'])/,2))!==null)return v;
+    if((v=tryRe(/^([0-9][0-9a-fA-F]*)(?![0-9a-zA-Z_])/,16))!==null)return v; // MPASM default radix = hex
+    m=rest.match(/^\$/);if(m){i++;return pc}
+    m=rest.match(/^[A-Za-z_?][A-Za-z0-9_?]*/);
+    if(m){i+=m[0].length;const k=m[0].toUpperCase();if(k in sym)return sym[k];if(k==='HIGH'||k==='LOW'){const v2=unary();return k==='HIGH'?(v2>>8)&255:v2&255}
+      errs.push({t:'Error',c:113,line,msg:`Symbol not previously defined (${m[0]})`});return 0}
+    errs.push({t:'Error',c:108,line,msg:`Illegal character (${rest[0]||'end of line'})`});i=s.length;return 0;
+  }
+  function unary(){ws();const c=peek();if(c==='-'){i++;return -unary()}if(c==='~'){i++;return ~unary()}if(c==='+'){i++;return unary()}if(c==='('){i++;const v=or();ws();if(peek()===')')i++;else errs.push({t:'Error',c:109,line,msg:'Missing ")"'});return v}return num()}
+  function mul(){let v=unary();for(;;){ws();const c=peek();if(c==='*'){i++;v*=unary()}else if(c==='/'){i++;const d=unary();v=d?Math.trunc(v/d):0}else if(c==='%'){i++;const d=unary();v=d?v%d:0}else return v}}
+  function add(){let v=mul();for(;;){ws();const c=peek();if(c==='+'){i++;v+=mul()}else if(c==='-'){i++;v-=mul()}else return v}}
+  function shift(){let v=add();for(;;){ws();if(s.startsWith('<<',i)){i+=2;v<<=add()}else if(s.startsWith('>>',i)){i+=2;v>>=add()}else return v}}
+  function and(){let v=shift();for(;;){ws();if(peek()==='&'&&s[i+1]!=='&'){i++;v&=shift()}else return v}}
+  function xor(){let v=and();for(;;){ws();if(peek()==='^'){i++;v^=and()}else return v}}
+  function or(){let v=xor();for(;;){ws();if(peek()==='|'&&s[i+1]!=='|'){i++;v|=xor()}else return v}}
+  const v=or();ws();if(i<s.length)errs.push({t:'Error',c:108,line,msg:`Illegal character (${s[i]})`});return v;
+}
+
+function assemble(text){
+  const lines=text.replace(/\r/g,'').split('\n');
+  const errs=[];const sym={};const prog=new Array(1024).fill(0x3FFF);const used=new Array(1024).fill(false);
+  const lineAddr=new Array(lines.length).fill(-1);const addrLine={};let config=0x3FFF;let includeSeen=false;
+  const parsed=lines.map((raw,idx)=>{
+    const code=stripComment(raw);const ln=idx+1;
+    if(!code.trim())return null;
+    let label=null,rest=code;
+    const m0=code.match(/^([A-Za-z_?][A-Za-z0-9_?]*):?(?=\s|$)/);
+    if(m0&&!/^\s/.test(code)){const up=m0[1].toUpperCase();if(!(up in OPS)&&!DIRS.has(up)){label=m0[1];rest=code.slice(m0[0].length)}}
+    if(!label){const m1=code.match(/^\s*([A-Za-z_?][A-Za-z0-9_?]*):(?=\s|$)/);if(m1){label=m1[1];rest=code.slice(m1[0].length)}}
+    rest=rest.trim();let op='',args='';
+    const m2=rest.match(/^(#?[A-Za-z_][A-Za-z0-9_]*)\s*(.*)$/);if(m2){op=m2[1].toUpperCase();args=m2[2]}
+    else if(rest)op='?'+rest;
+    return{ln,label,op,args,raw};
+  });
+  // pass 1
+  let pc=0,cblock=null,ended=false;
+  const defineLabel=(name,val,ln)=>{const k=name.toUpperCase();if(k in sym&&!(k in INC&&includeSeen&&false)){errs.push({t:'Error',c:116,line:ln,msg:`Address label duplicated or different in second pass (${name})`});return}sym[k]=val};
+  for(const p of parsed){
+    if(!p||ended)continue;
+    if(cblock!==null&&p.op!=='ENDC'){
+      const names=[p.label,...(p.op&&!p.op.startsWith('?')?[p.op+(p.args?' '+p.args:'')]:[])].filter(Boolean).join(',');
+      for(const part of splitArgs(names.replace(/\s+/g,' '))){const mm=part.match(/^([A-Za-z_?][A-Za-z0-9_?]*)\s*(?::\s*(.+))?$/);if(!mm){errs.push({t:'Error',c:108,line:p.ln,msg:`Illegal character in CBLOCK (${part})`});continue}
+        defineLabel(mm[1],cblock,p.ln);cblock+=mm[2]?evalExpr(mm[2],sym,pc,errs,p.ln):1}
+      p.skip=true;continue;
+    }
+    const op=p.op;
+    if(op==='#INCLUDE'||op==='INCLUDE'){if(/p16f84a?\.inc/i.test(p.args)){Object.assign(sym,INC);includeSeen=true}else errs.push({t:'Error',c:105,line:p.ln,msg:`Cannot open file (Include File "${p.args.replace(/[<>"]/g,'')}" not found)`});continue}
+    if(op==='EQU'||op==='SET'||op==='CONSTANT'){if(!p.label){errs.push({t:'Error',c:128,line:p.ln,msg:'Missing argument(s) (label)'});continue}sym[p.label.toUpperCase()]=evalExpr(p.args,sym,pc,errs,p.ln);p.equ=true;continue}
+    if(p.label)defineLabel(p.label,pc,p.ln);
+    if(!op)continue;
+    if(op==='ORG'){pc=evalExpr(p.args,sym,pc,errs,p.ln)&0x3FF;p.org=pc;continue}
+    if(op==='CBLOCK'){cblock=p.args.trim()?evalExpr(p.args,sym,pc,errs,p.ln):0;continue}
+    if(op==='ENDC'){cblock=null;continue}
+    if(op==='END'){ended=true;continue}
+    if(op==='DT'){const items=splitArgs(p.args);let n=0;for(const it of items){if(/^".*"$/.test(it))n+=it.length-2;else n++}p.addr=pc;pc+=n;continue}
+    if(op==='BANKSEL'){p.addr=pc;pc+=1;continue}
+    if(['LIST','__CONFIG','RADIX','ERRORLEVEL','PAGESEL','PROCESSOR','#DEFINE','__IDLOCS'].includes(op))continue;
+    if(op in OPS){p.addr=pc;pc++;continue}
+    errs.push({t:'Error',c:122,line:p.ln,msg:`Illegal opcode (${op.replace(/^\?/,'')})`});p.bad=true;
+  }
+  if(cblock!==null)errs.push({t:'Error',c:129,line:lines.length,msg:'Expected (ENDC)'});
+  // pass 2
+  const emit=(addr,word,ln)=>{if(used[addr])errs.push({t:'Error',c:118,line:ln,msg:`Overwriting previous address contents (${H4(addr)})`});prog[addr]=word&0x3FFF;used[addr]=true;addrLine[addr]=ln;if(lineAddr[ln-1]<0)lineAddr[ln-1]=addr};
+  ended=false;
+  for(const p of parsed){
+    if(!p||p.skip||ended||p.bad)continue;
+    const op=p.op,ln=p.ln;
+    if(op==='END'){ended=true;continue}
+    if(op==='__CONFIG'){config=evalExpr(p.args,sym,0,errs,ln)&0x3FFF;continue}
+    if(op==='LIST'&&p.args&&!/p\s*=\s*16f84a?/i.test(p.args)&&/p\s*=/i.test(p.args))errs.push({t:'Warning',c:215,line:ln,msg:'Processor superseded by command line. Verify processor symbol.'});
+    if(op==='DT'){let a=p.addr;for(const it of splitArgs(p.args)){if(/^".*"$/.test(it)){for(const ch of it.slice(1,-1))emit(a++,0x3400|ch.charCodeAt(0),ln)}else emit(a++,0x3400|(evalExpr(it,sym,a,errs,ln)&255),ln)}continue}
+    if(op==='BANKSEL'){const v=evalExpr(p.args,sym,p.addr,errs,ln);emit(p.addr,(v&0x80?0x1400:0x1000)|(5<<7)|3,ln);continue}
+    if(!(op in OPS))continue;
+    const [kind,base]=OPS[op];const a=splitArgs(p.args);let w=base;const at=p.addr;
+    const need={'-':0,f:1,fd:[1,2],fb:2,k:1,a:1}[kind];
+    const nmin=Array.isArray(need)?need[0]:need,nmax=Array.isArray(need)?need[1]:need;
+    if(a.length<nmin){errs.push({t:'Error',c:128,line:ln,msg:'Missing argument(s)'});emit(at,w,ln);continue}
+    if(a.length>nmax)errs.push({t:'Warning',c:211,line:ln,msg:'Extraneous arguments on the line.'});
+    const fArg=s=>{const v=evalExpr(s,sym,at,errs,ln);if(v>0x7F){errs.push({t:'Message',c:302,line:ln,msg:'Register in operand not in bank 0.  Ensure that bank bits are correct.'})}if(v>0xFF||v<0)errs.push({t:'Warning',c:202,line:ln,msg:'Argument out of range.  Least significant bits used.'});return v&0x7F};
+    if(kind==='f')w|=fArg(a[0]);
+    else if(kind==='fd'){w|=fArg(a[0]);let d=1;if(a.length<2)errs.push({t:'Message',c:305,line:ln,msg:'Using default destination of 1 (file).'});else d=evalExpr(a[1],sym,at,errs,ln);if(d!==0&&d!==1)errs.push({t:'Error',c:126,line:ln,msg:`Argument out of range (${a[1]} not between 0 and 1)`});w|=(d&1)<<7}
+    else if(kind==='fb'){w|=fArg(a[0]);const b=evalExpr(a[1],sym,at,errs,ln);if(b<0||b>7)errs.push({t:'Error',c:126,line:ln,msg:`Argument out of range (${b} not between 0 and 7)`});w|=(b&7)<<7}
+    else if(kind==='k'){const k=evalExpr(a[0],sym,at,errs,ln);if(k>255||k<-128)errs.push({t:'Warning',c:202,line:ln,msg:'Argument out of range.  Least significant bits used.'});w|=k&255}
+    else if(kind==='a'){const k=evalExpr(a[0],sym,at,errs,ln);if(k>0x3FF||k<0)errs.push({t:'Warning',c:202,line:ln,msg:'Argument out of range.  Least significant bits used.'});w|=k&0x7FF}
+    emit(at,w,ln);
+  }
+  if(!ended)errs.push({t:'Warning',c:205,line:lines.length,msg:'Found directive in column 1. / No END directive found.'.split(' / ')[1]});
+  const labels={};for(const p of parsed)if(p&&p.label&&!p.equ&&!p.skip&&p.addr!==undefined)labels[p.addr]=p.label;
+  // labels that sit on their own line before an instruction
+  for(const p of parsed)if(p&&p.label&&!p.equ&&!p.skip&&p.addr===undefined&&(p.label.toUpperCase() in sym)){const v=sym[p.label.toUpperCase()];if(!(v in labels)&&used[v])labels[v]=p.label}
+  return{prog,used,errs,sym,lineAddr,addrLine,labels,config,lines,count:used.filter(Boolean).length};
+}
+
+/* ===================== disassembler ===================== */
+function dis(w){
+  const f=w&0x7F,d=(w>>7)&1,b=(w>>7)&7,k=w&255,a=w&0x7FF,hx=v=>'0x'+v.toString(16);
+  const top=w>>12;
+  if(top===0){
+    const o=(w>>8)&0xF;
+    if(o===0){if(w&0x80)return `MOVWF ${hx(f)}`;if(w===0x0008)return 'RETURN';if(w===0x0009)return 'RETFIE';if(w===0x0063)return 'SLEEP';if(w===0x0064)return 'CLRWDT';if((w&0x9F)===0)return 'NOP';return `NOP`}
+    if(o===1)return (w&0x80)?`CLRF ${hx(f)}`:'CLRW';
+    const n={2:'SUBWF',3:'DECF',4:'IORWF',5:'ANDWF',6:'XORWF',7:'ADDWF',8:'MOVF',9:'COMF',0xA:'INCF',0xB:'DECFSZ',0xC:'RRF',0xD:'RLF',0xE:'SWAPF',0xF:'INCFSZ'}[o];
+    return `${n} ${hx(f)}, ${d?'f':'w'}`;
+  }
+  if(top===1){return `${['BCF','BSF','BTFSC','BTFSS'][(w>>10)&3]} ${hx(f)}, ${hx(b)}`}
+  if(top===2){return `${(w&0x800)?'GOTO':'CALL'} ${hx(a)}`}
+  const o=(w>>8)&0xF;
+  if(o<4)return `MOVLW ${hx(k)}`;if(o<8)return `RETLW ${hx(k)}`;if(o===8)return `IORLW ${hx(k)}`;if(o===9)return `ANDLW ${hx(k)}`;if(o===0xA)return `XORLW ${hx(k)}`;if(o===0xB)return `XORLW ${hx(k)}`;if(o<0xE)return `SUBLW ${hx(k)}`;return `ADDLW ${hx(k)}`;
+}
+
+/* ===================== simulator core ===================== */
+let A=null; // last assembly
+const M={};
+function por(){
+  M.ram=new Uint8Array(0x50);M.W=0;M.STATUS=0x18;M.FSR=0;M.PCLATH=0;M.INTCON=0;M.OPTION=0xFF;M.TRISA=0x1F;M.TRISB=0xFF;M.LATA=0;M.LATB=0;M.TMR0=0;
+  M.EEDATA=0;M.EEADR=0;M.EECON1=0;M.pc=0;M.stack=new Array(8).fill(0);M.sp=0;M.depth=0;M.cycles=0;M.pre=0;M.sleep=false;M.inhibit=0;
+  M.pinsA=0;M.pinsB=0; // external input levels
+}
+por();
+const rp0=()=>(M.STATUS>>5)&1;
+function pinVal(port){const tris=port==='A'?M.TRISA:M.TRISB,lat=port==='A'?M.LATA:M.LATB,ext=port==='A'?M.pinsA:M.pinsB,mask=port==='A'?0x1F:0xFF;return ((lat&~tris)|(ext&tris))&mask}
+function rd(addr){
+  const f=addr&0x7F,b=addr>>7;
+  if(f>=0x0C&&f<=0x4F)return M.ram[f];
+  switch(f){
+    case 0:return M.FSR===0?0:rd(M.FSR&0xFF);
+    case 1:return b?M.OPTION:M.TMR0;
+    case 2:return M.pc&255;
+    case 3:return M.STATUS;case 4:return M.FSR;
+    case 5:return b?M.TRISA:pinVal('A');
+    case 6:return b?M.TRISB:pinVal('B');
+    case 8:return b?M.EECON1:M.EEDATA;case 9:return b?0:M.EEADR;
+    case 0xA:return M.PCLATH;case 0xB:return M.INTCON;
+  }return 0;
+}
+let pcWritten=false;
+function wr(addr,v){
+  v&=255;const f=addr&0x7F,b=addr>>7;
+  if(f>=0x0C&&f<=0x4F){M.ram[f]=v;return}
+  switch(f){
+    case 0:if(M.FSR!==0)wr(M.FSR&0xFF,v);return;
+    case 1:if(b)M.OPTION=v;else{M.TMR0=v;M.pre=0;M.inhibit=2}return;
+    case 2:M.pc=((M.PCLATH&0x1F)<<8)|v;pcWritten=true;return;
+    case 3:M.STATUS=(v&~0x18)|(M.STATUS&0x18);return;
+    case 4:M.FSR=v;return;
+    case 5:if(b)M.TRISA=v&0x1F;else M.LATA=v&0x1F;return;
+    case 6:if(b)M.TRISB=v;else M.LATB=v;return;
+    case 8:if(b)M.EECON1=v&0x1F;else M.EEDATA=v;return;
+    case 9:if(!b)M.EEADR=v;return;
+    case 0xA:M.PCLATH=v&0x1F;return;case 0xB:M.INTCON=v;return;
+  }
+}
+const setZ=v=>{M.STATUS=(v&255)===0?M.STATUS|4:M.STATUS&~4};
+const setC=c=>{M.STATUS=c?M.STATUS|1:M.STATUS&~1};
+const setDC=c=>{M.STATUS=c?M.STATUS|2:M.STATUS&~2};
+function push(a){M.stack[M.sp]=a&0x1FFF;M.sp=(M.sp+1)&7;M.depth++;if(M.depth>8){M.depth=8;log('w',`Stack overflow at PC 0x${H3(curPC)}: the oldest return address was overwritten (the 16F84A stack is 8 levels and circular).`)}}
+function pop(){M.sp=(M.sp+7)&7;if(M.depth===0)log('w',`Stack underflow at PC 0x${H3(curPC)}: RETURN with an empty stack.`);else M.depth--;return M.stack[M.sp]}
+let curPC=0;
+function tickTimer(n){
+  for(let i=0;i<n;i++){
+    if(M.inhibit){M.inhibit--;continue}
+    if(M.OPTION&0x20)continue; // T0CS=1: counts RA4/T0CKI edges (no stimulus here)
+    let inc=true;
+    if(!(M.OPTION&0x08)){M.pre++;const ratio=2<<(M.OPTION&7);if(M.pre>=ratio)M.pre=0;else inc=false}
+    if(inc){M.TMR0=(M.TMR0+1)&255;if(M.TMR0===0)M.INTCON|=0x04}
+  }
+}
+function step(){
+  if(M.sleep)return 1;
+  // interrupt check
+  if((M.INTCON&0x80)&&(((M.INTCON&0x20)&&(M.INTCON&0x04))||((M.INTCON&0x10)&&(M.INTCON&0x02))||((M.INTCON&0x08)&&(M.INTCON&0x01)))){
+    push(M.pc);M.INTCON&=~0x80;M.pc=4;M.cycles+=2;tickTimer(2);return 2}
+  curPC=M.pc&0x3FF;const w=A?A.prog[curPC]:0x3FFF;M.pc=(M.pc+1)&0x1FFF;pcWritten=false;
+  let cyc=1;const f=w&0x7F,d=(w>>7)&1,addr=(rp0()<<7)|f,k=w&255,top=w>>12;
+  const store=(v)=>{if(d)wr(addr,v);else M.W=v&255};
+  if(top===0){
+    const o=(w>>8)&0xF;
+    if(o===0){
+      if(w&0x80)wr(addr,M.W);
+      else if(w===0x0008){M.pc=pop();cyc=2}
+      else if(w===0x0009){M.pc=pop();M.INTCON|=0x80;cyc=2}
+      else if(w===0x0063){M.STATUS=(M.STATUS|0x10)&~0x08;M.sleep=true}
+      else if(w===0x0064){M.STATUS|=0x18}
+    }else if(o===1){if(w&0x80){wr(addr,0);setZ(0)}else{M.W=0;setZ(0)}}
+    else{
+      const fv=rd(addr);let r;
+      switch(o){
+        case 2:r=fv-M.W;setC(r>=0);setDC((fv&15)-(M.W&15)>=0);r&=255;setZ(r);store(r);break;
+        case 3:r=(fv-1)&255;setZ(r);store(r);break;
+        case 4:r=fv|M.W;setZ(r);store(r);break;
+        case 5:r=fv&M.W;setZ(r);store(r);break;
+        case 6:r=fv^M.W;setZ(r);store(r);break;
+        case 7:r=fv+M.W;setC(r>255);setDC((fv&15)+(M.W&15)>15);r&=255;setZ(r);store(r);break;
+        case 8:setZ(fv);store(fv);break;
+        case 9:r=(~fv)&255;setZ(r);store(r);break;
+        case 0xA:r=(fv+1)&255;setZ(r);store(r);break;
+        case 0xB:r=(fv-1)&255;store(r);if(r===0){M.pc=(M.pc+1)&0x1FFF;cyc=2}break;
+        case 0xC:r=(fv>>1)|((M.STATUS&1)<<7);setC(fv&1);store(r);break;
+        case 0xD:r=((fv<<1)|(M.STATUS&1))&255;setC(fv&0x80);store(r);break;
+        case 0xE:r=((fv<<4)|(fv>>4))&255;store(r);break;
+        case 0xF:r=(fv+1)&255;store(r);if(r===0){M.pc=(M.pc+1)&0x1FFF;cyc=2}break;
+      }
+    }
+  }else if(top===1){
+    const bit=(w>>7)&7,op=(w>>10)&3,fv=rd(addr);
+    if(op===0)wr(addr,fv&~(1<<bit));else if(op===1)wr(addr,fv|(1<<bit));
+    else{const set=(fv>>bit)&1;if((op===2&&!set)||(op===3&&set)){M.pc=(M.pc+1)&0x1FFF;cyc=2}}
+  }else if(top===2){
+    const a=w&0x7FF;
+    if(w&0x800){M.pc=((M.PCLATH&0x18)<<8)|a}else{push(M.pc);M.pc=((M.PCLATH&0x18)<<8)|a}
+    cyc=2;
+  }else{
+    const o=(w>>8)&0xF;
+    if(o<4)M.W=k;
+    else if(o<8){M.W=k;M.pc=pop();cyc=2}
+    else if(o===8){M.W|=k;setZ(M.W)}
+    else if(o===9){M.W&=k;setZ(M.W)}
+    else if(o===0xA||o===0xB){M.W^=k;setZ(M.W)}
+    else if(o<0xE){const r=k-M.W;setC(r>=0);setDC((k&15)-(M.W&15)>=0);M.W=r&255;setZ(M.W)}
+    else{const r=k+M.W;setC(r>255);setDC((k&15)+(M.W&15)>15);M.W=r&255;setZ(M.W)}
+  }
+  if(pcWritten)cyc=2;
+  M.cycles+=cyc;tickTimer(cyc);
+  return cyc;
+}
+
+/* ===================== UI state ===================== */
+const UI={state:'idle',bps:new Set(),prev:null,dirty:true,timer:0,raf:0,fosc:4e6};
+const src=$('#src'),hl=$('#hl'),gut=$('#gut');
+function snapshot(){return{W:M.W,STATUS:M.STATUS,FSR:M.FSR,PCLATH:M.PCLATH,INTCON:M.INTCON,OPTION:M.OPTION,TRISA:M.TRISA,TRISB:M.TRISB,TMR0:M.TMR0,PCL:M.pc&255,PA:pinVal('A'),PB:pinVal('B'),EEDATA:M.EEDATA,EEADR:M.EEADR,EECON1:M.EECON1,ram:Uint8Array.from(M.ram),stack:M.stack.slice(),sp:M.sp}}
+
+/* ----- editor ----- */
+const KWS=new Set(Object.keys(OPS));
+function hlLine(line){
+  const ci=(()=>{let q=null;for(let i=0;i<line.length;i++){const ch=line[i];if(q){if(ch===q)q=null}else if(ch==="'"||ch==='"')q=ch;else if(ch===';')return i}return -1})();
+  const code=ci>=0?line.slice(0,ci):line,cmt=ci>=0?line.slice(ci):'';
+  let out='',first=true;
+  code.replace(/(\s+)|("[^"]*"|'[^']*')|([#_A-Za-z?.$][\w?.$']*)|([^\s"'#_A-Za-z?.$]+)/g,(m,ws,str,word,other,off)=>{
+    if(ws){out+=ws;return m}
+    if(str){out+=`<span class="s">${esc(str)}</span>`;return m}
+    if(word){const u=word.toUpperCase();
+      if(off===0&&!KWS.has(u)&&!DIRS.has(u))out+=`<span class="l">${esc(word)}</span>`;
+      else if(KWS.has(u))out+=`<span class="k">${esc(word)}</span>`;
+      else if(DIRS.has(u)||u==='#INCLUDE')out+=`<span class="d">${esc(word)}</span>`;
+      else if(/^(0x[0-9a-f]+|[hbdo]'[0-9a-f]+'|\.[0-9]+|[0-9][0-9a-f]*h?)$/i.test(word))out+=`<span class="n">${esc(word)}</span>`;
+      else out+=esc(word);return m}
+    out+=/^[0-9]/.test(other)?`<span class="n">${esc(other)}</span>`:esc(other);return m});
+  return out+(cmt?`<span class="c">${esc(cmt)}</span>`:'');
+}
+let errLines=new Set();
+function renderEditor(){
+  const lines=src.value.split('\n');const pcLine=(A&&!UI.dirty&&UI.state!=='running')?A.addrLine[M.pc&0x3FF]:-1;
+  hl.innerHTML=lines.map((l,i)=>`<span class="ln${i+1===pcLine?' cur':''}${errLines.has(i+1)?' err':''}">${hlLine(l)||' '}</span>`).join('');
+  gut.innerHTML=lines.map((l,i)=>`<div data-l="${i+1}" class="${UI.bps.has(i+1)?'bp':''} ${i+1===pcLine?'pc':''}">${i+1}</div>`).join('');
+  syncScroll();
+}
+function syncScroll(){hl.scrollTop=src.scrollTop;hl.scrollLeft=src.scrollLeft;gut.scrollTop=src.scrollTop}
+src.addEventListener('scroll',syncScroll);
+src.addEventListener('input',()=>{if(!UI.dirty){UI.dirty=true;setTitle();renderStatus()}renderEditor()});
+src.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const s=src.selectionStart,en=src.selectionEnd;src.setRangeText('\t',s,en,'end');src.dispatchEvent(new Event('input'))}});
+gut.addEventListener('click',e=>{const d=e.target.closest('div[data-l]');if(!d)return;const l=+d.dataset.l;
+  if(UI.bps.has(l))UI.bps.delete(l);else{
+    if(A&&!UI.dirty&&A.lineAddr[l-1]<0){log('m',`Line ${l} has no instruction, so a breakpoint there would never be hit.`);return}
+    UI.bps.add(l)}
+  renderEditor();renderDis()});
+gut.addEventListener('wheel',e=>{src.scrollTop+=e.deltaY},{passive:true});
+function gotoLine(l){const lines=src.value.split('\n');let pos=0;for(let i=0;i<l-1;i++)pos+=lines[i].length+1;src.focus();src.setSelectionRange(pos,pos+(lines[l-1]||'').length);
+  src.scrollTop=Math.max(0,(l-6)*18);syncScroll()}
+
+/* ----- output ----- */
+const out=$('#out');
+function log(cls,txt,line){const d=document.createElement('div');d.className=cls;d.textContent=txt;if(line){d.dataset.l=line;d.title='Go to line '+line}out.appendChild(d);out.scrollTop=out.scrollHeight}
+out.addEventListener('click',e=>{const d=e.target.closest('[data-l]');if(d)gotoLine(+d.dataset.l)});
+
+/* ----- build ----- */
+function build(){
+  stop();out.innerHTML='';
+  log('','Executing: "mpasm" /q /p16F84A "source.asm" /l"source.lst" /e"source.err"');
+  A=assemble(src.value);errLines=new Set();
+  const order={Error:0,Warning:1,Message:2};
+  A.errs.sort((a,b)=>a.line-b.line||order[a.t]-order[b.t]);
+  for(const e of A.errs){const tag=`${e.t}[${String(e.c).padStart(3,'0')}]`;log(e.t==='Error'?'e':e.t==='Warning'?'w':'m',`${tag.padEnd(13)} source.asm ${e.line} : ${e.msg}`,e.line);if(e.t==='Error')errLines.add(e.line)}
+  const ne=A.errs.filter(e=>e.t==='Error').length,nw=A.errs.filter(e=>e.t==='Warning').length,nm=A.errs.filter(e=>e.t==='Message').length;
+  if(ne){log('e',`Halting build on first failure as requested.\nBUILD FAILED: ${new Date().toLocaleString()}`);A=null;UI.dirty=true}
+  else{
+    log('',`Program memory used: ${A.count} of 1024 words · Config word: 0x${H4(A.config)}`);
+    log('ok',`Loaded source.cof.\nBUILD SUCCEEDED: ${new Date().toLocaleString()}  (${nw} warning${nw!==1?'s':''}, ${nm} message${nm!==1?'s':''})`);
+    UI.dirty=false;
+    // drop breakpoints on lines that hold no instruction
+    for(const l of [...UI.bps])if(A.lineAddr[l-1]<0)UI.bps.delete(l);
+    reset(true);
+  }
+  setTitle();renderAll();
+  return !ne;
+}
+
+/* ----- run control ----- */
+function bpHit(){if(!UI.bps.size||!A)return false;const l=A.addrLine[M.pc&0x3FF];return l!==undefined&&UI.bps.has(l)}
+function stop(){UI.state=UI.state==='running'||UI.state==='animating'?'halted':UI.state;clearTimeout(UI.timer);cancelAnimationFrame(UI.raf)}
+function ensureBuilt(){if(UI.dirty||!A){log('','Source changed: rebuilding before running.');return build()}return true}
+function beginStep(){UI.prev=snapshot()}
+function doStep(){if(!ensureBuilt())return;beginStep();step();UI.state=M.sleep?'sleep':'halted';renderAll()}
+function stepOver(){if(!ensureBuilt())return;beginStep();const w=A.prog[M.pc&0x3FF];
+  if((w>>11)===4){const ret=(M.pc+1)&0x1FFF,depth=M.depth;let n=0;step();while(!(M.pc===ret&&M.depth<=depth)&&n<2e6&&!M.sleep){if(bpHit())break;step();n++}}
+  else step();
+  UI.state=bpHit()?'break':M.sleep?'sleep':'halted';renderAll()}
+function stepOut(){if(!ensureBuilt())return;beginStep();if(M.depth===0){step();UI.state='halted';renderAll();return}
+  const depth=M.depth;let n=0;while(n<2e6&&!M.sleep){const w=A.prog[M.pc&0x3FF];step();n++;if(M.depth<depth)break;if(bpHit())break}
+  UI.state=bpHit()?'break':M.sleep?'sleep':'halted';renderAll()}
+function run(){
+  if(!ensureBuilt())return;beginStep();UI.state='running';renderAll();
+  let first=true,last=performance.now();
+  const chunk=()=>{
+    if(UI.state!=='running')return;
+    const budget=Math.max(2000,Math.round(UI.fosc/4/60));let n=0;
+    while(n<budget){if(!first&&bpHit()){UI.state='break';break}first=false;step();n++;if(M.sleep){UI.state='sleep';break}}
+    const now=performance.now();if(UI.state!=='running'||now-last>120){last=now;renderAll(UI.state==='running')}
+    if(UI.state==='running')UI.raf=requestAnimationFrame(chunk);else renderAll();
+  };
+  UI.raf=requestAnimationFrame(chunk);
+}
+function animate(){
+  if(!ensureBuilt())return;UI.state='animating';renderAll();let first=true;
+  const tick=()=>{if(UI.state!=='animating')return;if(!first&&bpHit()){UI.state='break';renderAll();return}first=false;
+    beginStep();step();if(M.sleep){UI.state='sleep';renderAll();return}renderAll();UI.timer=setTimeout(tick,+$('#animSpd').value)};
+  tick();
+}
+function halt(){if(UI.state==='running'||UI.state==='animating'){stop();UI.state='halted';renderAll()}}
+function reset(silent){stop();por();UI.prev=snapshot();UI.state=A?'halted':'idle';if(!silent)log('','Device reset (power-on values loaded).');renderAll()}
+
+/* ===================== windows ===================== */
+function chg(cur,prev){return UI.prev&&cur!==prev?' chg':''}
+function renderSFR(){
+  const P=UI.prev||snapshot();
+  const rows=[['',' WREG',M.W,P.W]];
+  const vals={INDF:[M.FSR?rd(M.FSR):0,null],TMR0:[M.TMR0,P.TMR0],PCL:[M.pc&255,P.PCL],STATUS:[M.STATUS,P.STATUS],FSR:[M.FSR,P.FSR],PORTA:[pinVal('A'),P.PA],PORTB:[pinVal('B'),P.PB],
+    EEDATA:[M.EEDATA,P.EEDATA],EEADR:[M.EEADR,P.EEADR],PCLATH:[M.PCLATH,P.PCLATH],INTCON:[M.INTCON,P.INTCON],OPTION_REG:[M.OPTION,P.OPTION],TRISA:[M.TRISA,P.TRISA],TRISB:[M.TRISB,P.TRISB],EECON1:[M.EECON1,P.EECON1],EECON2:[0,0]};
+  let h='<thead><tr><th>Address</th><th>SFR Name</th><th>Hex</th><th>Decimal</th><th>Binary</th><th>Char</th></tr></thead><tbody>';
+  h+=`<tr><td></td><td>WREG</td><td class="ed${chg(M.W,P.W)}" data-r="W">${H2(M.W)}</td><td class="${chg(M.W,P.W).trim()}">${M.W}</td><td class="${chg(M.W,P.W).trim()}">${B8(M.W)}</td><td>${M.W>=32&&M.W<127?esc(String.fromCharCode(M.W)):'.'}</td></tr>`;
+  for(const [n,a0,a1] of SFRDEF){const [v,p]=vals[n];const c=p===null?'':chg(v,p);const addr=a0!==null?H3(a0):H3(a1);
+    h+=`<tr><td>${addr}</td><td>${n}</td><td class="ed${c}" data-r="${n}">${H2(v)}</td><td class="${c.trim()}">${v}</td><td class="${c.trim()}">${B8(v)}</td><td>${v>=32&&v<127?esc(String.fromCharCode(v)):'.'}</td></tr>`}
+  $('#sfr').innerHTML=h+'</tbody>';
+}
+function ramCell(a){
+  const f=a&0x7F,b=a>>7;
+  if(f>=0x0C&&f<=0x4F)return{v:M.ram[f],kind:'gpr'};
+  if(f<0x0C){if(f===7||(b&&f===9&&false))return{kind:'na'};const nm=NAMES[a]||(MIRROR.has(f)?NAMES[f]:null);if(!nm)return{kind:'na'};return{v:rd(a),kind:'sfr'}}
+  return{kind:'na'};
+}
+function renderRAM(){
+  const P=UI.prev;let h='<thead><tr><th>Address</th>';for(let c=0;c<16;c++)h+=`<th>${c.toString(16).toUpperCase().padStart(2,'0')}</th>`;h+='</tr></thead><tbody>';
+  for(let r=0;r<16;r++){h+=`<tr><td class="a">${H3(r*16)}</td>`;for(let c=0;c<16;c++){const a=r*16+c,x=ramCell(a);
+    if(x.kind==='na'){h+=`<td class="na">--</td>`;continue}
+    const f=a&0x7F;const ch=P&&x.kind==='gpr'&&P.ram[f]!==x.v?' chg':'';
+    h+=`<td class="${x.kind==='sfr'?'sfr':'ed'}${ch}" data-a="${a}" title="0x${H3(a)}${x.kind==='sfr'?' '+(NAMES[a]||NAMES[f]):a>=0x80&&x.kind==='gpr'?' (mirror of 0x'+H3(f)+')':''}">${H2(x.v)}</td>`}
+    h+='</tr>'}
+  $('#ram').innerHTML=h+'</tbody>';
+}
+function locOf(a){if(!A)return '';let best=null;for(const k in A.labels){const v=+k;if(v<=a&&(best===null||v>best))best=v}return best===null?'':`${A.labels[best]}${a-best?'+0x'+(a-best).toString(16):''}`}
+function renderStack(){
+  let h='<thead><tr><th>TOS</th><th>Stack Level</th><th>Return Address</th><th>Location</th></tr></thead><tbody>';
+  for(let lvl=1;lvl<=8;lvl++){const idx=(M.sp-lvl+8)&7,valid=lvl<=M.depth,tos=lvl===1&&M.depth>0;
+    h+=`<tr><td class="tos">${tos?'➜':''}</td><td>${lvl}</td><td>${valid?'0x'+H4(M.stack[idx]):'—'}</td><td>${valid?esc(locOf(M.stack[idx])):'Empty'}</td></tr>`}
+  $('#stk').innerHTML=h+'</tbody>';
+  // pins
+  const pa=pinVal('A'),pb=pinVal('B');let p='';
+  const grp=(name,val,tris,n,port)=>{let s=`<span class="grp"><b>${name}</b>`;for(let i=n-1;i>=0;i--){const isIn=(tris>>i)&1,h_=(val>>i)&1;s+=`<span class="pin ${isIn?'in':'out'}${h_?' h':''}" data-p="${port}" data-b="${i}" title="R${port}${i}: ${isIn?'input (click to toggle the stimulus level)':'output'} = ${h_}">${i}</span>`}return s+'</span>'};
+  p+=grp('PORTA',pa,M.TRISA,5,'A')+grp('PORTB',pb,M.TRISB,8,'B');
+  $('#pins').innerHTML=p+'<span class="grp" style="color:var(--muted)">orange = output · blue = input driven high</span>';
+}
+let disRendered=null;
+function renderDis(){
+  if(!A){$('#dis').innerHTML='<tbody><tr><td style="padding:10px;color:var(--muted)">Build the project (Build All) to see the disassembly listing.</td></tr></tbody>';disRendered=null;return}
+  if(disRendered!==A){
+    let h='<thead><tr><th>Line</th><th>Address</th><th>Opcode</th><th>Label</th><th>Disassembly</th><th>Source</th></tr></thead><tbody><tr class="hdr"><td colspan="6">--- source.asm ---</td></tr>';
+    const addrs=[];for(let a=0;a<1024;a++)if(A.used[a])addrs.push(a);
+    for(const a of addrs){const ln=A.addrLine[a];const s=(A.lines[ln-1]||'').replace(/\t/g,' ');
+      h+=`<tr data-a="${a}" data-l="${ln}"><td>${ln}</td><td>${H3(a)}</td><td class="op">${H4(A.prog[a])}</td><td>${A.labels[a]?esc(A.labels[a]):''}</td><td>${esc(dis(A.prog[a]))}</td><td class="src">${esc(s.trim())}</td></tr>`}
+    $('#dis').innerHTML=h+'</tbody>';disRendered=A;
+  }
+  const pc=M.pc&0x3FF;
+  document.querySelectorAll('#dis tr[data-a]').forEach(tr=>{const a=+tr.dataset.a;tr.classList.toggle('cur',a===pc&&UI.state!=='running');tr.classList.toggle('bp',UI.bps.has(+tr.dataset.l))});
+  const cur=document.querySelector('#dis tr.cur');if(cur){const wb=cur.closest('.wb');const r=cur.getBoundingClientRect(),w=wb.getBoundingClientRect();if(r.top<w.top+24||r.bottom>w.bottom)wb.scrollTop+=r.top-w.top-wb.clientHeight/2}
+}
+function fmtTime(s){return s>=1?s.toFixed(3)+' s':s>=1e-3?(s*1e3).toFixed(3)+' ms':(s*1e6).toFixed(2)+' µs'}
+function renderStatus(){
+  const st={idle:['Ready','st-halt'],halted:['Halted','st-halt'],running:['Running…','st-run'],animating:['Animating','st-run'],break:['Break','st-break'],sleep:['SLEEP','st-sleep']}[UI.state]||['',''];
+  const s=M.STATUS;const flag=(b,n)=>((s>>b)&1)?n.toUpperCase():n.toLowerCase();
+  const t=M.cycles*4/UI.fosc;
+  $('#status').innerHTML=`<span class="${st[1]}"><b>${UI.dirty&&A===null?'Not built':st[0]}</b></span><span>PIC16F84A</span><span>W:<b>0x${H2(M.W)}</b></span><span>${flag(2,'z')} ${flag(1,'dc')} ${flag(0,'c')}</span><span>bank ${rp0()}</span><span>pc:<b>0x${H3(M.pc&0x3FF)}</b></span><span>${$('#fosc').selectedOptions[0].text}</span><span>Stopwatch: <b>${M.cycles}</b> cycles · <b>${fmtTime(t)}</b><button type="button" class="zero" data-act="zero">Zero</button></span>${UI.dirty&&A?'<span style="color:#9a5b00">source changed: Build All to update</span>':''}`;
+}
+function setTitle(){$('#appTitle').textContent=`PIC IDE Simulator — source.asm${UI.dirty?' *':''}`;$('#edTitle').textContent=`source.asm${UI.dirty?' *':''}`}
+function renderAll(light){
+  renderStatus();
+  if(light&&UI.state==='running'){renderSFR();renderStack();return}
+  renderEditor();renderDis();renderSFR();renderRAM();renderStack();
+  const busy=UI.state==='running'||UI.state==='animating';
+  document.querySelectorAll('[data-act="step"],[data-act="over"],[data-act="out"],[data-act="run"],[data-act="animate"],[data-act="build"]').forEach(b=>{if(b.classList.contains('tb'))b.disabled=busy});
+  $('#bHalt').disabled=!busy;
+  if(UI.state==='running'||UI.state==='animating')return;
+  // scroll editor to PC line
+  if(A&&!UI.dirty){const l=A.addrLine[M.pc&0x3FF];if(l){const top=(l-1)*18;if(top<src.scrollTop||top>src.scrollTop+src.clientHeight-36){src.scrollTop=Math.max(0,top-src.clientHeight/2);syncScroll()}}}
+}
+
+/* ----- inline editing of register values ----- */
+function inlineEdit(td,cur,commit){const inp=document.createElement('input');inp.value=H2(cur);td.textContent='';td.appendChild(inp);inp.focus();inp.select();
+  const done=ok=>{if(ok){const v=parseInt(inp.value.replace(/^0x/i,''),16);if(!isNaN(v)){UI.prev=snapshot();commit(v&255)}}renderAll()};
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')done(true);if(e.key==='Escape')done(false)});inp.addEventListener('blur',()=>done(true))}
+$('#sfr').addEventListener('dblclick',e=>{const td=e.target.closest('td.ed');if(!td||UI.state==='running')return;const r=td.dataset.r;
+  const map={W:[()=>M.W,v=>M.W=v],TMR0:[()=>M.TMR0,v=>M.TMR0=v],PCL:[()=>M.pc&255,v=>M.pc=(M.pc&~255)|v],STATUS:[()=>M.STATUS,v=>M.STATUS=v],FSR:[()=>M.FSR,v=>M.FSR=v],PORTA:[()=>M.LATA,v=>M.LATA=v&0x1F],PORTB:[()=>M.LATB,v=>M.LATB=v],
+    EEDATA:[()=>M.EEDATA,v=>M.EEDATA=v],EEADR:[()=>M.EEADR,v=>M.EEADR=v],PCLATH:[()=>M.PCLATH,v=>M.PCLATH=v&0x1F],INTCON:[()=>M.INTCON,v=>M.INTCON=v],OPTION_REG:[()=>M.OPTION,v=>M.OPTION=v],TRISA:[()=>M.TRISA,v=>M.TRISA=v&0x1F],TRISB:[()=>M.TRISB,v=>M.TRISB=v],EECON1:[()=>M.EECON1,v=>M.EECON1=v]}[r];
+  if(map)inlineEdit(td,map[0](),map[1])});
+$('#ram').addEventListener('dblclick',e=>{const td=e.target.closest('td.ed');if(!td||UI.state==='running')return;const f=(+td.dataset.a)&0x7F;inlineEdit(td,M.ram[f],v=>M.ram[f]=v)});
+$('#pins').addEventListener('click',e=>{const p=e.target.closest('.pin.in');if(!p)return;const b=+p.dataset.b;if(p.dataset.p==='A')M.pinsA^=1<<b;else M.pinsB^=1<<b;renderSFR();renderStack();renderStatus()});
+$('#dis').addEventListener('click',e=>{const tr=e.target.closest('tr[data-l]');if(tr)gotoLine(+tr.dataset.l)});
+$('#dis').addEventListener('dblclick',e=>{const tr=e.target.closest('tr[data-l]');if(!tr)return;const l=+tr.dataset.l;if(UI.bps.has(l))UI.bps.delete(l);else UI.bps.add(l);renderEditor();renderDis()});
+
+/* ----- menus, toolbar, keys ----- */
+function dialog(title,html){$('#dlgT').textContent=title;$('#dlgB').innerHTML=html;$('#dlg').hidden=false;$('#dlgOk').focus()}
+$('#dlgOk').addEventListener('click',()=>{$('#dlg').hidden=true});
+const HELP=`<p><b>1. Write or open code.</b> The editor holds <code>source.asm</code>. File → Open sample loads one of three example programs.</p>
+<p><b>2. Build All</b> (Ctrl+F10) assembles it. Errors, warnings and messages appear in the Output window; click one to jump to its line.</p>
+<p><b>3. Debug.</b> Step Into (F7) runs one instruction; Step Over (F8) runs a whole CALL; Step Out finishes the current subroutine; Animate steps continuously; Run (F9) runs at full speed until a breakpoint or Halt (F5); Reset (F6) loads the power-on values.</p>
+<p><b>Breakpoints:</b> click a line number in the editor, or double-click a row in the Disassembly Listing.</p>
+<p><b>Changed values</b> are shown in red. Double-click a value in the Special Function Registers or File Registers window to edit it. Click a blue input pin to change its level.</p>`;
+function act(a){
+  document.querySelectorAll('.menu.open').forEach(m=>m.classList.remove('open'));
+  switch(a){
+    case 'build':build();break;case 'run':run();break;case 'animate':animate();break;case 'halt':halt();break;
+    case 'step':doStep();break;case 'over':stepOver();break;case 'out':stepOut();break;case 'reset':reset();break;
+    case 'clrbp':UI.bps.clear();renderAll();break;case 'zero':M.cycles=0;renderStatus();break;
+    case 'new':stop();src.value='        LIST    P=16F84A\n        #include <p16f84a.inc>\n        __CONFIG _XT_OSC & _WDT_OFF & _PWRTE_ON\n\n        ORG     0x000\nSTART   \n        GOTO    START\n        END\n';UI.bps.clear();A=null;UI.dirty=true;out.innerHTML='';por();UI.state='idle';setTitle();renderAll();break;
+    case 'sample0':case 'sample1':case 'sample2':stop();src.value=SAMPLES[+a.slice(-1)];UI.bps.clear();build();break;
+    case 'help':dialog('How to use this simulator',HELP);break;
+    case 'about':dialog('About',`<p><b>PIC IDE Simulator</b>: a browser-based teaching simulator for the PIC16F84A. Its window layout is modelled on the classic MPLAB® IDE debugger; it is not made by or affiliated with Microchip Technology.</p><p>It assembles MPASM-style source (all 35 instructions, ORG, EQU, CBLOCK, DT, BANKSEL, __CONFIG and #include &lt;p16f84a.inc&gt;) and simulates the core, the 8-level stack, banked RAM, FSR/INDF, PCL/PCLATH, Timer0 with prescaler and interrupts. EEPROM writes, the watchdog and RB0/RB-change interrupts from pins are not simulated.</p>`);break;
+    case 'tile':document.querySelectorAll('.win.max').forEach(w=>w.classList.remove('max'));break;
+    default:if(a&&a.startsWith('v')){const id={vEditor:'wEditor',vDis:'wDis',vSfr:'wSfr',vRam:'wRam',vStk:'wStk',vOut:'wOut'}[a];document.querySelectorAll('.win.max').forEach(w=>w.classList.remove('max'));const w=document.getElementById(id);w.classList.add('max')}
+  }
+}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b){act(b.dataset.act);return}
+  const mb=e.target.closest('.menu>button');document.querySelectorAll('.menu').forEach(m=>{if(!mb||m!==mb.parentElement)m.classList.remove('open')});if(mb)mb.parentElement.classList.toggle('open')});
+document.querySelectorAll('.win .mx').forEach(b=>b.addEventListener('click',()=>{const w=b.closest('.win');const on=!w.classList.contains('max');document.querySelectorAll('.win.max').forEach(x=>x.classList.remove('max'));if(on)w.classList.add('max');b.textContent=on?'❐':'□'}));
+document.querySelectorAll('.win').forEach(w=>w.addEventListener('mousedown',()=>{document.querySelectorAll('.win').forEach(x=>x.classList.toggle('dim',x!==w))}));
+document.addEventListener('keydown',e=>{
+  const k=e.key;
+  if(k==='F7'){e.preventDefault();act('step')}else if(k==='F8'){e.preventDefault();act('over')}else if(k==='F9'){e.preventDefault();act('run')}
+  else if(k==='F5'){e.preventDefault();act('halt')}else if(k==='F6'){e.preventDefault();act('reset')}else if(k==='F10'&&e.ctrlKey){e.preventDefault();act('build')}
+  else if(k==='Escape'){$('#dlg').hidden=true;document.querySelectorAll('.menu.open').forEach(m=>m.classList.remove('open'))}
+});
+$('#fosc').addEventListener('change',e=>{UI.fosc=+e.target.value;renderStatus()});
+
+/* ----- fit to screen ----- */
+const DW=1600,DH=900;
+function fit(){const app=$('#ide'),vw=window.innerWidth,vh=window.innerHeight,on=vw>=760&&vw/vh>=1.1;
+  document.documentElement.classList.toggle('fit',on);
+  if(on){const k=Math.min(vw/DW,vh/DH);app.style.transform=`scale(${k})`;app.style.left=Math.max(0,(vw-DW*k)/2)+'px';app.style.top=Math.max(0,(vh-DH*k)/2)+'px'}
+  else{app.style.transform='';app.style.left='';app.style.top=''}}
+window.addEventListener('resize',fit);
+
+/* ----- start ----- */
+src.value=SAMPLES[0];setTitle();build();fit();
+UI.bps.add(A?A.addrLine[A.sym.DELAY]:0);renderAll();
+})();
+</script>
+</body>
+</html>
