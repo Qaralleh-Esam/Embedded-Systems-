@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PIC Motor Drive Lab</title>
+<meta name="description" content="Animated lab: how a PIC16F84A drives a DC motor through a BJT, a logic-level MOSFET or an H-bridge, with node voltages, currents and the effect of the flyback (freewheeling) diode.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#eef1f5;--card:#ffffff;--ink:#121a26;--muted:#5d6979;--line:#d6dce4;--soft:#f4f6f9;
+  --accent:#0b5cad;--accent-soft:#e3eefa;--wire:#2b3442;--rail:#b23a1e;--gnd:#2b3442;
+  --flow:#0f9d58;--dio:#e08a00;--aval:#d62828;--hi:#e8590c;--lo:#7a8696;--sw-on:#0f9d58;--sw-off:#9aa5b3;
+  --ok:#1f7a33;--warn:#a35d00;--bad:#c62828;--okbg:#e9f7ee;--warnbg:#fff4e0;--badbg:#fdecec;
+  --scope:#0e1520;--grid:#223042;--t1:#ffd43b;--t2:#4dabf7;--t3:#69db7c;--t4:#ff922b;--t5:#e599f7;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;--ui:'IBM Plex Sans',system-ui,sans-serif;--disp:'IBM Plex Sans Condensed','IBM Plex Sans',sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f141b;--card:#171e28;--ink:#e6ebf2;--muted:#9aa6b6;--line:#2a3442;--soft:#1d2531;--accent:#5aa9f0;--accent-soft:#1c2c40;--wire:#c9d2de;--rail:#ff7b5a;--gnd:#c9d2de;
+  --okbg:#14291b;--warnbg:#2d2210;--badbg:#311717;--ok:#6fd08c;--warn:#f0b05a;--bad:#ff8a80;--sw-off:#5d6979}}
+:root[data-theme="dark"]{--bg:#0f141b;--card:#171e28;--ink:#e6ebf2;--muted:#9aa6b6;--line:#2a3442;--soft:#1d2531;--accent:#5aa9f0;--accent-soft:#1c2c40;--wire:#c9d2de;--rail:#ff7b5a;--gnd:#c9d2de;
+  --okbg:#14291b;--warnbg:#2d2210;--badbg:#311717;--ok:#6fd08c;--warn:#f0b05a;--bad:#ff8a80;--sw-off:#5d6979}
+*{box-sizing:border-box}[hidden]{display:none!important}
+html,body{background:var(--bg)}
+body{margin:0;color:var(--ink);font:14px/1.45 var(--ui);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app{display:flex;flex-direction:column;gap:10px;padding:12px 16px 16px;max-width:1600px;margin:0 auto}
+header{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+h1{font:700 26px/1 var(--disp);margin:0;letter-spacing:-.01em}h1 span{color:var(--accent)}
+.sub{font:500 11.5px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.tabs{display:flex;gap:4px;margin-left:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:3px;flex-wrap:wrap}
+.tabs button{border:0;background:none;padding:7px 14px;border-radius:7px;cursor:pointer;font-weight:600;font-size:13.5px;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--accent);color:#fff}
+.main{display:grid;grid-template-columns:320px minmax(0,1fr) 420px;gap:10px;min-height:0}
+.col{display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0;min-width:0}
+.card-h{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);font:600 15px var(--disp);flex:none}
+.card-h .r{margin-left:auto;font:500 11.5px var(--mono);color:var(--muted)}
+.card-b{padding:10px 12px;overflow:auto;min-height:0}
+.grp{margin-bottom:11px}.grp:last-child{margin-bottom:0}
+.lbl{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:5px;display:flex;justify-content:space-between}
+.lbl b{color:var(--ink);font-weight:600;text-transform:none;letter-spacing:0}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg button{border:1px solid var(--line);background:var(--soft);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.seg.modes button{flex:1 1 30%}
+.seg button.danger[aria-pressed="true"]{background:var(--bad);border-color:var(--bad)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.toggle{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--soft);cursor:pointer;user-select:none}
+.toggle input{width:18px;height:18px;accent-color:var(--accent)}
+.toggle.big{border-width:2px}.toggle.big.on{border-color:var(--dio)}.toggle.big.off{border-color:var(--aval)}
+.toggle small{display:block;color:var(--muted);font-size:12px}
+.bits{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.bit{border:1px solid var(--line);border-radius:6px;padding:4px 2px;text-align:center;cursor:pointer;background:var(--soft);font:12px var(--mono)}
+.bit b{display:block;font-size:17px}
+.bit.one{background:var(--accent-soft);border-color:var(--accent)}
+.note{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+.btn{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:7px;padding:6px 12px;cursor:pointer;font-weight:600;font-size:13px}
+.btn.ghost{background:none;color:var(--accent)}
+/* schematic */
+.sch{flex:1;min-height:0;position:relative}
+.sch svg{width:100%;height:100%;display:block}
+.w{stroke:var(--wire);stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.rail{stroke:var(--rail);stroke-width:3}
+.flow{fill:none;stroke-width:4.5;stroke-linecap:round;stroke-dasharray:3 13;opacity:0;transition:opacity .15s}
+.flow.n{stroke:var(--flow)}.flow.d{stroke:var(--dio)}.flow.a{stroke:var(--aval);stroke-width:6}.flow.s{stroke:var(--aval);stroke-width:7;stroke-dasharray:6 8}
+.dot{fill:var(--wire)}
+.lab{font:600 13px var(--ui);fill:var(--ink)}.labm{font:500 11.5px var(--mono);fill:var(--muted)}
+.tag rect{fill:var(--card);stroke:var(--line)}.tag text{font:600 12.5px var(--mono);fill:var(--ink)}
+.tag.v rect{stroke:var(--accent)}.tag.i rect{stroke:var(--flow)}.tag.id rect{stroke:var(--dio)}.tag.bad rect{stroke:var(--aval);fill:var(--badbg)}
+.swbox{fill:var(--soft);stroke:var(--wire);stroke-width:1.6}
+.swbox.on{fill:color-mix(in srgb,var(--sw-on) 14%,var(--card));stroke:var(--sw-on)}
+.blade{stroke:var(--wire);stroke-width:3;stroke-linecap:round;transition:all .12s}
+.ghost{opacity:.28}
+.qglow{fill:none;stroke:var(--aval);stroke-width:5;opacity:0}
+.banner{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);background:var(--bad);color:#fff;font-weight:600;padding:6px 14px;border-radius:8px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.25);text-align:center;max-width:90%}
+/* scope */
+.scope-w{flex:none;display:flex;flex-direction:column}
+.scope-c{position:relative;height:300px;background:var(--scope);border-radius:0 0 10px 10px}
+.scope-c canvas{position:absolute;inset:0;width:100%;height:100%}
+.scope-ctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font:12px var(--mono);color:var(--muted)}
+.scope-ctl select{border:1px solid var(--line);background:var(--soft);border-radius:5px;padding:1px 4px}
+/* readings */
+table.rd{width:100%;border-collapse:collapse;font-size:13px}
+.rd td{padding:3px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+.rd td:first-child{color:var(--muted);white-space:nowrap}
+.rd td.v{font:600 13px var(--mono);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.rd td.n{font-size:12px;color:var(--muted)}
+.rd tr.bad td.v,.rd tr.bad td.n{color:var(--bad)}.rd tr.warn td.v{color:var(--warn)}
+.verdict{border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:8px;border:1px solid}
+.verdict b{display:block;margin-bottom:2px}
+.verdict.ok{background:var(--okbg);border-color:var(--ok)}.verdict.warn{background:var(--warnbg);border-color:var(--warn)}.verdict.bad{background:var(--badbg);border-color:var(--bad)}
+/* explain */
+.itabs{display:flex;gap:2px;margin-left:auto}
+.itabs button{border:1px solid var(--line);background:var(--soft);padding:2px 10px;border-radius:5px;cursor:pointer;font:500 12.5px var(--ui)}
+.itabs button[aria-selected="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ex p{margin:0 0 8px}.ex h4{font:600 14px var(--disp);margin:10px 0 4px}.ex ul{margin:0 0 8px;padding-left:18px}.ex li{margin-bottom:3px}
+.ex code{font:12.5px var(--mono);background:var(--soft);padding:0 3px;border-radius:3px}
+.tt{width:100%;border-collapse:collapse;font:12px var(--mono);margin:4px 0 8px}
+.tt th,.tt td{border:1px solid var(--line);padding:2px 4px;text-align:center}
+.tt th{background:var(--soft);font-weight:600}.tt td:first-child{text-align:left;font-family:var(--ui)}
+.tt tr.cur td{background:var(--accent-soft);font-weight:600}.tt tr.forbid td{color:var(--bad)}
+pre.code{margin:0;font:12.3px/1.5 var(--mono);background:var(--scope);color:#d5dde8;border-radius:8px;padding:8px 0;overflow:auto}
+pre.code .ln{display:block;padding:0 10px;white-space:pre}
+pre.code .ln.hl{background:#284b2f;box-shadow:inset 3px 0 0 #69db7c}
+pre.code .c{color:#7f93a8;font-style:italic}pre.code .k{color:#8cc8ff}pre.code .d{color:#e2a6ff}pre.code .n{color:#ffcf7a}
+.codesel{display:flex;gap:4px;margin-bottom:6px}
+/* responsive */
+@media (max-width:1180px){html:not(.fit) .main{grid-template-columns:1fr}html:not(.fit) .sch{height:420px}}
+@media (max-width:600px){h1{font-size:22px}.tabs{margin-left:0;width:100%}.tabs button{flex:1;padding:7px 6px}html:not(.fit) .sch{height:330px}.scope-c{height:260px}}
+html.fit,html.fit body{height:100%;overflow:hidden}
+html.fit .app{position:fixed;left:0;top:0;width:1600px;height:900px;max-width:none;transform-origin:0 0}
+html.fit .main{flex:1;grid-template-rows:minmax(0,1fr)}
+html.fit .col.mid .card.sch-card{flex:1}
+html.fit .col.right .card.rd-card{flex:none}
+html.fit .col.right .card.ex-card{flex:1}
+html.fit .col.left .card{flex:1}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+<header>
+  <div><h1>PIC Motor Drive <span>Lab</span></h1><div class="sub">PIC16F84A · low-side BJT · low-side MOSFET · H-bridge · flyback diodes</div></div>
+  <nav class="tabs" role="tablist" aria-label="Drive circuit">
+    <button role="tab" data-drive="bjt" aria-selected="true">① BJT low-side</button>
+    <button role="tab" data-drive="mos" aria-selected="false">② MOSFET low-side</button>
+    <button role="tab" data-drive="hb" aria-selected="false">③ H-bridge</button>
+  </nav>
+</header>
+<div class="main">
+  <div class="col left">
+    <section class="card"><div class="card-h">Controls<span class="r" id="slowmo"></span></div>
+      <div class="card-b" id="ctl"></div>
+    </section>
+  </div>
+  <div class="col mid">
+    <section class="card sch-card"><div class="card-h"><span id="schTitle">Circuit</span><span class="r">green = motor · amber = diode · red = avalanche / short</span></div>
+      <div class="sch" id="sch"></div>
+    </section>
+    <section class="card scope-w"><div class="card-h">Oscilloscope<span class="r scope-ctl"><label>Time/screen <select id="win"><option value="0.002">2 ms</option><option value="0.01">10 ms</option><option value="0.05" selected>50 ms</option><option value="0.2">200 ms</option><option value="1">1 s</option></select></label><button type="button" class="btn ghost" id="pause" style="padding:1px 10px">❚❚ Pause</button></span></div>
+      <div class="scope-c"><canvas id="scope"></canvas></div>
+    </section>
+  </div>
+  <div class="col right">
+    <section class="card rd-card"><div class="card-h">Node voltages &amp; currents<span class="r">live</span></div>
+      <div class="card-b"><div class="verdict ok" id="verdict"></div><table class="rd" id="rd"></table></div>
+    </section>
+    <section class="card ex-card"><div class="card-h"><span id="exTitle">How it works</span><span class="itabs" role="tablist"><button type="button" data-ex="how" aria-selected="true">How it works</button><button type="button" data-ex="code" aria-selected="false">PIC code</button></span></div>
+      <div class="card-b ex" id="ex"></div>
+    </section>
+  </div>
+</div>
+</div>
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+/* ===================== models ===================== */
+const MOTOR={R:5,L:4e-3,K:0.006,J:3.6e-7,b:8.4e-7};
+const PART={
+  '2N2222':{name:'2N2222',beta:100,vbe:0.7,vs0:0.15,rs:0.35,imax:0.6,vbr:40,pmax:0.5,desc:'small-signal NPN · β≈100 · 600 mA · 40 V'},
+  'TIP120':{name:'TIP120',beta:1000,vbe:1.4,vs0:0.75,rs:0.25,imax:5,vbr:60,pmax:2,desc:'NPN Darlington · β≈1000 · 5 A · 60 V'}};
+const MOS={name:'IRLZ44N',vth:1.8,kp:10,ron5:0.025,ron4:0.035,vbr:55,ciss:1.7e-9,imax:47};
+const HB={rp:0.1,rn:0.025,vf:0.8,vbr:55};
+const S={drive:'bjt',vcc:12,part:'2N2222',rb:1000,pd:true,diode:true,pin:'high',pwmF:1000,duty:60,load:1,stall:false,win:0.05,paused:false,
+  hb:{mode:'fwd',bits:[0,1,0,1],duty:100,shifter:true,demo:false,diode:true},ex:'how',lang:'asm'};
+const sim={t:0,i:0,w:0,th:0,aval:false,avalE:0,lastE:0,peakV:0,lastPeak:0,events:0,n:{},fault:false,gEdge:0,lastPin:0,demoT:0,demoStep:0};
+const HBMODES={fwd:[0,1,0,1],rev:[1,0,1,0],coast:[1,1,0,0],brakeL:[1,1,1,1],brakeH:[0,0,0,0]};
+const MODENAME={fwd:'Forward',rev:'Reverse',coast:'Coast',brakeL:'Brake (low side)',brakeH:'Brake (high side)',custom:'Custom'};
+const bitsToPort=b=>b[0]|(b[1]<<1)|(b[2]<<2)|(b[3]<<3);
+const DEMO=[{m:'fwd',t:0.3,lines:[12,13]},{m:'coast',t:0.02,lines:[15,16]},{m:'rev',t:0.3,lines:[18,19]},{m:'brakeL',t:0.2,lines:[21,22]}];
+
+/* pin level for the low-side drives */
+function pinLevel(t){
+  if(S.pin==='high')return 5;if(S.pin==='low')return 0;if(S.pin==='hiz')return null;
+  const ph=(t*S.pwmF)%1;return ph<S.duty/100?5:0;
+}
+function floatGate(t){return 1.95+0.45*Math.sin(t*37)+0.25*Math.sin(t*151+1)}
+/* ===================== low-side step ===================== */
+function stepLow(dt){
+  const V=S.vcc,M=MOTOR,E=M.K*sim.w;let i=sim.i;const pv=pinLevel(sim.t);
+  let ilim=0,vsat=0,ib=0,vctl=0,ig=0,vbr,qState='off';
+  if(S.drive==='bjt'){const p=PART[S.part];vbr=p.vbr;
+    if(pv===null){vctl=0;ib=0}else{ib=Math.max(0,(pv-p.vbe)/S.rb);vctl=ib>0?p.vbe:pv}
+    ilim=p.beta*ib;vsat=p.vs0+i*p.rs;
+  }else{vbr=MOS.vbr;
+    vctl=pv===null?(S.pd?0:floatGate(sim.t)):pv;
+    ilim=vctl<=MOS.vth?0:Math.min(200,MOS.kp*(vctl-MOS.vth)**2);
+    const ron=vctl>=4.5?MOS.ron5:vctl>=3.5?MOS.ron4:0.08;vsat=i*ron;
+    if(pv!==null&&pv!==sim.lastPin){sim.gEdge=0.6e-6*S.duty/100+1}// marker for an edge (displayed as peak)
+  }
+  if(pv!==sim.lastPin){if(pv!==null&&sim.lastPin!==null)sim.gPeak=5/100;sim.lastPin=pv}
+  let vn,iq=0,idd=0,di=0,mode;
+  if(ilim>0){
+    vn=vsat;di=(V-vn-i*M.R-E)/M.L;mode='sat';
+    if(i>=ilim&&di>0){i=ilim;di=0;vn=Math.max(vsat,V-i*M.R-E);mode='lin'}
+    else if(i>ilim){i=ilim;di=0;vn=Math.max(vsat,V-i*M.R-E);mode='lin'}
+    iq=i;
+  }else if(i>0){
+    if(S.diode){vn=V+0.7;idd=i;mode='dio'}else{vn=vbr;iq=i;mode='aval'}
+    di=(V-vn-i*M.R-E)/M.L;
+  }else{vn=V-E;mode='off'}
+  i+=di*dt;if(i<0)i=0;if(mode!=='lin'&&ilim>0&&i>ilim)i=ilim;
+  if(mode==='aval'){sim.avalE+=vbr*i*dt;if(!sim.aval){sim.aval=true;sim.peakV=vbr}}
+  else if(sim.aval){sim.aval=false;sim.lastE=sim.avalE;sim.avalE=0;sim.lastPeak=sim.peakV;sim.events++}
+  if(mode==='dio')sim.lastPeak=Math.max(sim.lastPeak*0.99999,vn);
+  sim.i=i;mech(dt);
+  sim.n={vcc:V,pin:pv,vctl,ib,ig:0,vn,vm:V-vn,E:MOTOR.K*sim.w,i,iq,idd,ilim,mode,pq:Math.max(0,vn)*iq,vbr};
+}
+function mech(dt){const M=MOTOR;if(S.stall){sim.w=0;return}
+  sim.w+=(M.K*sim.i-M.b*S.load*sim.w)/M.J*dt;sim.th+=sim.w*dt}
+/* ===================== H-bridge step ===================== */
+function hbBits(){
+  const h=S.hb;const b=h.bits.slice();
+  if(h.duty<100&&(h.mode==='fwd'||h.mode==='rev')){const on=(sim.t*S.pwmF)%1<h.duty/100;if(!on){if(h.mode==='fwd')b[3]=0;else b[2]=0}}
+  return b;
+}
+function hbSwitches(b){
+  const V=S.vcc;const g1=b[0]?(S.hb.shifter?V:5):0,g2=b[1]?(S.hb.shifter?V:5):0;
+  return{s1:(V-g1)>2,s2:(V-g2)>2,s3:!!b[2],s4:!!b[3],g1,g2};
+}
+function nodeA(sw,dir,allowAval,diode){ // dir: sign of i (A->B positive); returns {v,dev}
+  const V=S.vcc;
+  if(sw.s1)return{v:V,dev:'s1'};if(sw.s3)return{v:0,dev:'s3'};
+  if(dir>0)return diode?{v:-HB.vf,dev:'d3'}:allowAval?{v:V-HB.vbr,dev:'a1'}:null;
+  if(dir<0)return diode?{v:V+HB.vf,dev:'d1'}:allowAval?{v:HB.vbr,dev:'a3'}:null;
+  return null;
+}
+function nodeB(sw,dir,allowAval,diode){
+  const V=S.vcc;
+  if(sw.s2)return{v:V,dev:'s2'};if(sw.s4)return{v:0,dev:'s4'};
+  if(dir>0)return diode?{v:V+HB.vf,dev:'d2'}:allowAval?{v:HB.vbr,dev:'a4'}:null;
+  if(dir<0)return diode?{v:-HB.vf,dev:'d4'}:allowAval?{v:V-HB.vbr,dev:'a2'}:null;
+  return null;
+}
+function stepHB(dt){
+  const V=S.vcc,M=MOTOR,diode=S.hb.diode;
+  if(S.hb.demo){sim.demoT+=dt;const st=DEMO[sim.demoStep];if(sim.demoT>=st.t){sim.demoT=0;sim.demoStep=(sim.demoStep+1)%DEMO.length;setMode(DEMO[sim.demoStep].m,true)}}
+  const b=hbBits(),sw=hbSwitches(b);
+  sim.fault=(sw.s1&&sw.s3)||(sw.s2&&sw.s4);
+  let i=sim.i;const E=M.K*sim.w;let A,B,di=0;
+  if(sim.fault){A={v:sw.s1&&sw.s3?V/2:(sw.s1?V:0),dev:'short'};B={v:sw.s2&&sw.s4?V/2:(sw.s2?V:0),dev:'short'};i=0}
+  else if(i!==0){
+    const dir=Math.sign(i);
+    A=nodeA(sw,dir,true,diode);B=nodeB(sw,dir,true,diode);
+    // small drops in channels
+    if(A.dev==='s1')A.v-=i*HB.rp;if(A.dev==='s3')A.v-=i*HB.rn;if(B.dev==='s2')B.v+=i*HB.rp;if(B.dev==='s4')B.v+=i*HB.rn;
+    di=(A.v-B.v-i*M.R-E)/M.L;
+    const ni=i+di*dt;
+    const bothCh=['s1','s3'].includes(A.dev)&&['s2','s4'].includes(B.dev);
+    i=(!bothCh&&Math.sign(ni)!==dir)?0:ni;
+  }else{
+    let started=false;
+    for(const dir of [1,-1]){const a=nodeA(sw,dir,false,diode),bb=nodeB(sw,dir,false,diode);if(!a||!bb)continue;
+      const d=(a.v-bb.v-E)/M.L;if(Math.sign(d)===dir){A=a;B=bb;i=d*dt;started=true;break}}
+    if(!started){
+      const a0=sw.s1?V:sw.s3?0:null,b0=sw.s2?V:sw.s4?0:null;
+      if(a0!==null&&b0!==null){A={v:a0,dev:'s'};B={v:b0,dev:'s'}}
+      else if(a0!==null){A={v:a0,dev:sw.s1?'s1':'s3'};B={v:a0-E,dev:'float'}}
+      else if(b0!==null){B={v:b0,dev:sw.s2?'s2':'s4'};A={v:b0+E,dev:'float'}}
+      else{A={v:V/2+E/2,dev:'float'};B={v:V/2-E/2,dev:'float'}}
+    }
+  }
+  const avalNow=(A&&A.dev[0]==='a')||(B&&B.dev[0]==='a');
+  if(avalNow){sim.avalE+=HB.vbr*Math.abs(i)*dt;if(!sim.aval){sim.aval=true}}
+  else if(sim.aval){sim.aval=false;sim.lastE=sim.avalE;sim.avalE=0;sim.events++}
+  const pk=Math.max(A.v,B.v);if(avalNow||A.dev[0]==='d'||B.dev[0]==='d')sim.lastPeak=Math.max(pk,sim.lastPeak*0.99999);
+  sim.i=i;mech(dt);
+  // branch currents (positive = downward in the leg, or along the drawn diode path)
+  const I={s1:0,s2:0,s3:0,s4:0,d1:0,d2:0,d3:0,d4:0};
+  if(!sim.fault&&i!==0){
+    const ad=A.dev,bd=B.dev;
+    if(ad==='s1'||ad==='a1')I.s1=i;else if(ad==='s3'||ad==='a3')I.s3=-i;else if(ad==='d3')I.d3=i;else if(ad==='d1')I.d1=-i;
+    if(bd==='s4'||bd==='a4')I.s4=i;else if(bd==='s2'||bd==='a2')I.s2=-i;else if(bd==='d2')I.d2=i;else if(bd==='d4')I.d4=-i;
+  }
+  sim.n={vcc:V,b,sw,A,B,E:M.K*sim.w,i,I,port:bitsToPort(b),ishort:sim.fault?V/(HB.rp+HB.rn):0};
+}
+
+/* ===================== schematics ===================== */
+const flowEls={};
+function tag(id,x,y,cls,anchor){return `<g class="tag ${cls}" id="${id}" data-x="${x}" data-y="${y}" data-a="${anchor||'start'}"><rect rx="5" height="22"/><text y="15"></text></g>`}
+function resH(x1,x2,y){const n=6,w=(x2-x1);let d=`M${x1},${y}`;for(let k=0;k<n;k++){d+=` L${x1+w*(k+.5)/n},${y+(k%2?7:-7)}`}return d+` L${x2},${y}`}
+function resV(x,y1,y2){const n=6,h=(y2-y1);let d=`M${x},${y1}`;for(let k=0;k<n;k++){d+=` L${x+(k%2?7:-7)},${y1+h*(k+.5)/n}`}return d+` L${x},${y2}`}
+function gnd(x,y){return `<path class="w" d="M${x},${y} v6 M${x-14},${y+6} h28 M${x-9},${y+12} h18 M${x-4},${y+18} h8"/>`}
+function diodeUp(x,y1,y2,id){ // anode at y2 (bottom), cathode at y1 (top)
+  return `<g id="${id}"><path class="w" d="M${x-12},${y1} h24" /><path d="M${x},${y1} L${x-12},${y2} L${x+12},${y2} Z" fill="var(--card)" stroke="var(--wire)" stroke-width="2.2" stroke-linejoin="round"/></g>`}
+function motor(cx,cy,r){return `<g><circle cx="${cx}" cy="${cy}" r="${r}" fill="var(--card)" stroke="var(--wire)" stroke-width="2.4"/><g id="rotor" transform="translate(${cx},${cy})"><circle r="${r*0.62}" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="5 5"/><path d="M${-r*0.6},0 H${r*0.6} M0,${-r*0.6} V${r*0.6}" stroke="var(--muted)" stroke-width="2.5"/></g><text x="${cx}" y="${cy+6}" text-anchor="middle" style="font:700 19px var(--ui);fill:var(--ink);paint-order:stroke;stroke:var(--card);stroke-width:5px">M</text></g>`}
+function buildLow(){
+  const bjt=S.drive==='bjt';
+  const q=bjt?`<circle cx="395" cy="300" r="32" fill="var(--card)" stroke="var(--wire)" stroke-width="2"/><circle id="qglow" class="qglow" cx="395" cy="300" r="36"/>
+    <path class="w" d="M345,300 H378 M378,281 V319 M378,291 L400,272 V250 M378,309 L400,328 V395"/><path d="M393,321 L401,329 L390,330 Z" fill="var(--wire)"/>`
+   :`<circle cx="395" cy="300" r="32" fill="var(--card)" stroke="var(--wire)" stroke-width="2"/><circle id="qglow" class="qglow" cx="395" cy="300" r="36"/>
+    <path class="w" d="M345,300 H372 M372,284 V316 M381,282 V292 M381,295 V305 M381,308 V318 M381,287 H400 V250 M381,313 H400 V395 M381,300 H400 V313"/><path d="M383,300 L391,296 L391,304 Z" fill="var(--wire)"/>`;
+  const pd=!bjt?`<g id="pdG"><circle class="dot" cx="205" cy="300" r="3.5"/><path class="w" d="M205,300 V318"/><path class="w" d="${resV(205,318,368)}"/><path class="w" d="M205,368 V385"/>${gnd(205,385)}<text class="labm" x="193" y="347" text-anchor="end">10 kΩ</text><text class="labm" x="193" y="362" text-anchor="end">pull-down</text></g>`:'';
+  return `<svg viewBox="0 0 800 430" role="img" aria-label="Low-side ${bjt?'BJT':'MOSFET'} motor driver schematic">
+  <g id="flows">
+    <path class="flow n" id="fSup" d="M400,50 V80"/>
+    <path class="flow n" id="fMot" d="M400,80 V225"/>
+    <path class="flow n" id="fQ" d="M400,225 V395"/>
+    <path class="flow d" id="fD" d="M400,225 H520 V80 H400"/>
+    <path class="flow n" id="fB" d="M150,300 H345"/>
+  </g>
+  <path class="w rail" d="M330,50 H610"/><text class="lab" x="618" y="55" fill="var(--rail)" style="fill:var(--rail)">VCC</text>
+  <path class="w" d="M400,50 V102 M400,178 V250"/><circle class="dot" cx="400" cy="80" r="3.5"/><circle class="dot" cx="400" cy="225" r="3.5"/>
+  ${motor(400,140,38)}
+  <g id="dGrp"><path class="w" d="M400,80 H520 V128 M520,168 V225 H400"/>${diodeUp(520,128,168,'dSym')}<text class="lab" x="540" y="143" id="dLab1">D1 · 1N4007</text><text class="labm" x="540" y="160" id="dLab2">flyback diode</text></g>
+  <rect x="30" y="235" width="120" height="120" rx="8" fill="var(--soft)" stroke="var(--wire)" stroke-width="2"/>
+  <text class="lab" x="90" y="262" text-anchor="middle">PIC16F84A</text><text class="labm" x="90" y="280" text-anchor="middle">VDD = 5 V</text>
+  <text class="labm" x="140" y="305" text-anchor="end">RB0</text><circle id="pinDot" cx="150" cy="300" r="6" stroke="var(--wire)" stroke-width="1.5"/>
+  <path class="w" d="M156,300 H230"/><path class="w" d="${resH(230,300,300)}"/><path class="w" d="M300,300 H345"/>
+  <text class="lab" x="265" y="285" text-anchor="middle" id="rLab">${bjt?'R_B':'R_G = 100 Ω'}</text>
+  ${pd}${q}${gnd(400,395)}
+  <text class="lab" x="440" y="296">Q1 · ${bjt?PART[S.part].name:'IRLZ44N'}</text><text class="labm" x="440" y="313">${bjt?(S.part==='TIP120'?'NPN Darlington':'NPN BJT'):'N-ch logic-level MOSFET'}</text>
+  <text class="labm" x="412" y="262">${bjt?'C':'D'}</text><text class="labm" x="412" y="350">${bjt?'E':'S'}</text><text class="labm" x="352" y="292">${bjt?'B':'G'}</text>
+  ${tag('tVcc',330,14,'v')}${tag('tPin',30,204,'v')}${tag('tCtl',300,326,'v','end')}${tag('tN',378,214,'v','end')}${tag('tVm',448,98,'v')}
+  ${tag('tIm',350,130,'i','end')}${tag('tId',540,178,'id')}${tag('tIq',412,365,'i')}${tag('tIb',265,248,'i','middle')}
+  </svg>`;
+}
+function swBlock(x,y,id,name,type){ // box 50x70, terminals top (y) and bottom (y+70)
+  return `<g><rect class="swbox" id="${id}Box" x="${x-25}" y="${y}" width="50" height="70" rx="6"/>
+  <circle class="dot" cx="${x}" cy="${y+12}" r="3"/><circle class="dot" cx="${x}" cy="${y+58}" r="3"/>
+  <line class="blade" id="${id}Bl" x1="${x}" y1="${y+58}" x2="${x}" y2="${y+12}"/>
+  <text class="lab" x="${x+(x<400?-31:31)}" y="${y+20}" text-anchor="${x<400?'end':'start'}">${name}</text><text class="labm" x="${x+(x<400?-31:31)}" y="${y+62}" text-anchor="${x<400?'end':'start'}">${type}-ch</text></g>`}
+function gateIn(x,y,side,label,pull){const d=side<0?-1:1;const x0=x+25*d,x1=x+95*d;
+  return `<path class="w" d="M${x0},${y} H${x0+12*d}"/><path class="w" d="${resH(x0+12*d,x0+44*d,y)}"/><path class="w" d="M${x0+44*d},${y} H${x1}"/>
+  <circle cx="${x1+8*d}" cy="${y}" r="8" id="${label}Dot" stroke="var(--wire)" stroke-width="1.5"/><text class="lab" x="${x1+22*d}" y="${y+5}" text-anchor="${d<0?'end':'start'}">${label}</text>
+  <text class="labm" x="${x1+22*d}" y="${y+21}" text-anchor="${d<0?'end':'start'}">${pull}</text>`}
+function buildHB(){
+  return `<svg viewBox="0 0 800 430" role="img" aria-label="H-bridge motor driver schematic">
+  <g id="flows">
+    <path class="flow n" id="fS1" d="M240,40 V220"/><path class="flow n" id="fS3" d="M240,220 V400"/>
+    <path class="flow n" id="fS2" d="M560,40 V220"/><path class="flow n" id="fS4" d="M560,220 V400"/>
+    <path class="flow d" id="fD1" d="M240,190 H300 V60 H240"/><path class="flow d" id="fD3" d="M240,380 H300 V250 H240"/>
+    <path class="flow d" id="fD2" d="M560,190 H500 V60 H560"/><path class="flow d" id="fD4" d="M560,380 H500 V250 H560"/>
+    <path class="flow n" id="fM" d="M240,220 H360 M440,220 H560"/>
+  </g>
+  <path class="w rail" d="M180,40 H620"/><text class="lab" x="628" y="45" style="fill:var(--rail)">VCC</text>
+  <path class="w" d="M180,400 H620"/>${gnd(400,400)}
+  <path class="w" d="M240,40 V80 M240,150 V270 M240,340 V400 M560,40 V80 M560,150 V270 M560,340 V400 M240,220 H362 M438,220 H560"/>
+  <circle class="dot" cx="240" cy="220" r="4"/><circle class="dot" cx="560" cy="220" r="4"/>
+  <g id="dGrp">
+   <path class="w" d="M240,60 H300 V95 M300,125 V190 H240 M240,250 H300 V285 M300,315 V380 H240 M560,60 H500 V95 M500,125 V190 H560 M560,250 H500 V285 M500,315 V380 H560"/>
+   ${diodeUp(300,95,125,'d1')}${diodeUp(300,285,315,'d3')}${diodeUp(500,95,125,'d2')}${diodeUp(500,285,315,'d4')}
+   <text class="labm" x="312" y="114">D1</text><text class="labm" x="312" y="304">D3</text><text class="labm" x="470" y="114">D2</text><text class="labm" x="470" y="304">D4</text>
+  </g>
+  ${motor(400,220,38)}
+  ${swBlock(240,80,'s1','SW1','P')}${swBlock(240,270,'s3','SW3','N')}${swBlock(560,80,'s2','SW2','P')}${swBlock(560,270,'s4','SW4','N')}
+  ${gateIn(240,115,-1,'IN1','RB0 · 10k↑VCC')}${gateIn(240,305,-1,'IN3','RB2 · 10k↓GND')}${gateIn(560,115,1,'IN2','RB1 · 10k↑VCC')}${gateIn(560,305,1,'IN4','RB3 · 10k↓GND')}
+  <text class="lab" x="226" y="214" text-anchor="end">A</text><text class="lab" x="574" y="214">B</text>
+  ${tag('tVcc',180,4,'v')}${tag('tA',228,236,'v','end')}${tag('tB',572,236,'v')}${tag('tIm',400,168,'i','middle')}${tag('tE',400,258,'v','middle')}${tag('tPort',20,4,'v')}
+  </svg><div class="banner" id="banner" hidden></div>`;
+}
+function setTag(id,txt,cls){const g=document.getElementById(id);if(!g)return;const t=g.querySelector('text'),r=g.querySelector('rect');
+  if(t.textContent!==txt){t.textContent=txt;const w=t.getComputedTextLength()+14;const a=g.dataset.a,x=+g.dataset.x,y=+g.dataset.y;
+    const x0=a==='end'?x-w:a==='middle'?x-w/2:x;r.setAttribute('x',x0);r.setAttribute('width',w);r.setAttribute('y',y);t.setAttribute('x',x0+7);t.setAttribute('y',y+15)}
+  if(cls!==undefined)g.classList.toggle('bad',cls==='bad')}
+function buildSchematic(){
+  $('#sch').innerHTML=S.drive==='hb'?buildHB():buildLow();
+  for(const k in flowEls)delete flowEls[k];
+  document.querySelectorAll('#sch .flow').forEach(p=>{flowEls[p.id]={el:p,off:0,i:0}});
+  $('#schTitle').textContent={bjt:'Circuit ①: NPN BJT low-side switch',mos:'Circuit ②: N-channel MOSFET low-side switch',hb:'Circuit ③: H-bridge'}[S.drive];
+  // tags need layout before measuring
+  document.querySelectorAll('#sch .tag text').forEach(t=>t.textContent='');
+}
+function setFlow(id,cur,kind,iref){const f=flowEls[id];if(!f)return;f.i=cur;const a=Math.abs(cur);
+  f.el.style.opacity=a>1e-3?Math.min(1,.35+a/iref):0;if(kind)f.el.setAttribute('class','flow '+kind)}
+function animFlows(wdt){for(const k in flowEls){const f=flowEls[k];if(Math.abs(f.i)<1e-3)continue;const sp=Math.sign(f.i)*Math.min(1.6,0.35+Math.abs(f.i)/0.5)*70;f.off-=sp*wdt;f.el.style.strokeDashoffset=f.off.toFixed(1)}}
+
+/* ===================== controls ===================== */
+function segBtns(name,opts,cur){return `<div class="seg" data-k="${name}">${opts.map(([v,l,c])=>`<button type="button" class="${c||''}" data-v="${v}" aria-pressed="${String(v)===String(cur)}">${l}</button>`).join('')}</div>`}
+function buildControls(){
+  const d=S.drive;let h=`<div class="grp"><div class="lbl">Motor supply VCC <b id="vccV">${S.vcc.toFixed(1)} V</b></div><input type="range" id="vcc" min="5" max="12" step="0.5" value="${S.vcc}"></div>`;
+  const dio=d==='hb'?S.hb.diode:S.diode;
+  h+=`<div class="grp"><label class="toggle big ${dio?'on':'off'}" id="dioT"><input type="checkbox" id="dio" ${dio?'checked':''}><span><b>${d==='hb'?'Freewheeling diodes D1–D4':'Flyback diode D1 fitted'}</b><small>${d==='hb'?'MOSFET body diodes or external Schottkys':'1N4007 across the motor'}</small></span></label></div>`;
+  if(d!=='hb'){
+    if(d==='bjt'){h+=`<div class="grp"><div class="lbl">Transistor Q1</div>${segBtns('part',[['2N2222','2N2222'],['TIP120','TIP120 (Darlington)']],S.part)}<p class="note" id="partDesc">${PART[S.part].desc}</p></div>
+      <div class="grp"><div class="lbl">Base resistor R<sub>B</sub></div>${segBtns('rb',[[470,'470 Ω'],[1000,'1 kΩ'],[2200,'2.2 kΩ']],S.rb)}</div>`}
+    else h+=`<div class="grp"><label class="toggle"><input type="checkbox" id="pd" ${S.pd?'checked':''}><span><b>10 kΩ gate pull-down</b><small>keeps Q1 off while the PIC pin floats</small></span></label></div>`;
+    h+=`<div class="grp"><div class="lbl">RB0 output</div>${segBtns('pin',[['low','LOW'],['high','HIGH'],['pwm','PWM'],['hiz','Hi-Z (reset)']],S.pin)}</div>`;
+    h+=`<div class="grp" id="pwmG" ${S.pin==='pwm'?'':'hidden'}><div class="lbl">PWM duty <b id="dutyV">${S.duty}%</b></div><input type="range" id="duty" min="0" max="100" step="5" value="${S.duty}">
+       <div class="lbl" style="margin-top:6px">PWM frequency</div>${segBtns('pwmF',[[200,'200 Hz'],[1000,'1 kHz'],[5000,'5 kHz']],S.pwmF)}</div>`;
+  }else{
+    const hb=S.hb;
+    h+=`<div class="grp"><div class="lbl">Direction / mode</div><div class="seg modes" data-k="mode">${[['fwd','Forward'],['rev','Reverse'],['coast','Coast'],['brakeL','Brake ⇩'],['brakeH','Brake ⇧'],['short','Shoot-through','danger']].map(([v,l,c])=>`<button type="button" class="${c||''}" data-v="${v}" aria-pressed="${hb.mode===v}">${l}</button>`).join('')}</div></div>
+    <div class="grp"><div class="lbl">PORTB bits (click to flip) <b id="portV"></b></div><div class="bits" id="bits">${[0,1,2,3].map(k=>`<div class="bit" data-b="${k}" role="button" tabindex="0">RB${k} IN${k+1}<b>0</b></div>`).join('')}</div>
+      <p class="note">IN1/IN2 drive P-channel switches: <b>0 = ON</b>. IN3/IN4 drive N-channel switches: <b>1 = ON</b>.</p></div>
+    <div class="grp"><div class="lbl">Speed (PWM on the low-side switch) <b id="dutyV">${hb.duty}%</b></div><input type="range" id="hduty" min="0" max="100" step="5" value="${hb.duty}">
+      <div class="lbl" style="margin-top:6px">PWM frequency</div>${segBtns('pwmF',[[200,'200 Hz'],[1000,'1 kHz'],[5000,'5 kHz']],S.pwmF)}</div>
+    <div class="grp"><label class="toggle"><input type="checkbox" id="shift" ${hb.shifter?'checked':''}><span><b>Level shifter on IN1/IN2</b><small>needed when VCC is higher than the PIC's 5 V</small></span></label></div>
+    <div class="grp"><button type="button" class="btn" id="demo">${hb.demo?'■ Stop demo program':'▶ Run demo program'}</button><p class="note">Runs the code in the “PIC code” tab: forward → coast (dead time) → reverse → brake.</p></div>`;
+  }
+  h+=`<div class="grp"><div class="lbl">Mechanical load <b id="loadV">${S.load}×</b></div><input type="range" id="load" min="1" max="6" step="0.5" value="${S.load}">
+    <label class="toggle" style="margin-top:6px"><input type="checkbox" id="stall" ${S.stall?'checked':''}><span><b>Stall the shaft</b><small>back-EMF = 0 → stall current VCC / R</small></span></label></div>
+    <p class="note">Motor model: R = 5 Ω, L = 4 mH, k = 6 mV·s/rad (≈ 17 000 rpm, 0.25 A at 12 V no-load).</p>`;
+  $('#ctl').innerHTML=h;wireControls();
+}
+function wireControls(){
+  $('#vcc').oninput=e=>{S.vcc=+e.target.value;$('#vccV').textContent=S.vcc.toFixed(1)+' V';if(S.drive!=='hb')buildSchematicKeep()};
+  $('#dio').onchange=e=>{if(S.drive==='hb')S.hb.diode=e.target.checked;else S.diode=e.target.checked;const t=$('#dioT');t.classList.toggle('on',e.target.checked);t.classList.toggle('off',!e.target.checked);scopeReset()};
+  $('#load').oninput=e=>{S.load=+e.target.value;$('#loadV').textContent=S.load+'×'};
+  $('#stall').onchange=e=>{S.stall=e.target.checked};
+  document.querySelectorAll('#ctl .seg').forEach(sg=>sg.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const k=sg.dataset.k,v=b.dataset.v;
+    if(k==='mode'){S.hb.demo=false;setMode(v);$('#demo').textContent='▶ Run demo program';return}
+    sg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    if(k==='part'){S.part=v;$('#partDesc').textContent=PART[v].desc;buildSchematic()}
+    else if(k==='rb')S.rb=+v;else if(k==='pwmF')S.pwmF=+v;
+    else if(k==='pin'){S.pin=v;$('#pwmG').hidden=v!=='pwm'}
+    renderEx()}));
+  const pd=$('#pd');if(pd)pd.onchange=e=>{S.pd=e.target.checked;const g=$('#pdG');if(g)g.classList.toggle('ghost',!S.pd)};
+  const du=$('#duty');if(du)du.oninput=e=>{S.duty=+e.target.value;$('#dutyV').textContent=S.duty+'%'};
+  const hd=$('#hduty');if(hd)hd.oninput=e=>{S.hb.duty=+e.target.value;$('#dutyV').textContent=S.hb.duty+'%'};
+  const sh=$('#shift');if(sh)sh.onchange=e=>{S.hb.shifter=e.target.checked};
+  const dm=$('#demo');if(dm)dm.onclick=()=>{S.hb.demo=!S.hb.demo;dm.textContent=S.hb.demo?'■ Stop demo program':'▶ Run demo program';if(S.hb.demo){sim.demoStep=0;sim.demoT=0;setMode('fwd',true);S.ex='code';syncExTabs()}renderEx()};
+  const bits=$('#bits');if(bits){const flip=e=>{const t=e.target.closest('.bit');if(!t)return;S.hb.demo=false;if($('#demo'))$('#demo').textContent='▶ Run demo program';const k=+t.dataset.b;S.hb.bits[k]^=1;S.hb.mode=matchMode(S.hb.bits);syncHBctl();renderEx()};
+    bits.addEventListener('click',flip);bits.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();flip(e)}})}
+  if(S.drive==='hb')syncHBctl();
+}
+function buildSchematicKeep(){/* labels depend only on part; nothing to rebuild for VCC */}
+function matchMode(b){for(const k in HBMODES)if(HBMODES[k].every((v,i)=>v===b[i]))return k;
+  if((b[0]===0&&b[2]===1)||(b[1]===0&&b[3]===1))return 'short';return 'custom'}
+function setMode(m,fromDemo){
+  const hb=S.hb;hb.mode=m;
+  if(m==='short')hb.bits=[0,1,1,0];else hb.bits=HBMODES[m].slice();
+  syncHBctl();if(!fromDemo)renderEx();else highlightCode();
+}
+function syncHBctl(){
+  const hb=S.hb;document.querySelectorAll('[data-k="mode"] button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===hb.mode));
+  document.querySelectorAll('#bits .bit').forEach(t=>{const k=+t.dataset.b;t.classList.toggle('one',!!hb.bits[k]);t.querySelector('b').textContent=hb.bits[k]});
+  const p=$('#portV');if(p)p.textContent='PORTB = b\'xxxx'+[3,2,1,0].map(k=>hb.bits[k]).join('')+'\' = 0x'+bitsToPort(hb.bits).toString(16).toUpperCase().padStart(2,'0');
+}
+
+/* ===================== scope ===================== */
+const cv=$('#scope'),cx=cv.getContext('2d');const SC={N:600,col:0,acc:0,buf:[],lanes:[]};
+function lanesFor(){
+  if(S.drive==='hb')return[
+    {name:'IN1..IN4',k:'bits',h:.16,digital:true},
+    {name:'V_A',k:'va',h:.22,c:'--t2',u:'V',sym:true},
+    {name:'V_B',k:'vb',h:.22,c:'--t4',u:'V',sym:true},
+    {name:'I_motor',k:'i',h:.24,c:'--t3',u:'A',signed:true},
+    {name:'speed',k:'w',h:.16,c:'--t5',u:'rpm',signed:true}];
+  return[
+    {name:S.drive==='bjt'?'V_pin (RB0)':'V_gate',k:'pin',h:.16,c:'--t1',u:'V'},
+    {name:S.drive==='bjt'?'V_C (collector)':'V_D (drain)',k:'vn',h:.32,c:'--t2',u:'V'},
+    {name:'I_motor',k:'i',h:.22,c:'--t3',u:'A'},
+    {name:'I_D1 (diode)',k:'id',h:.18,c:'--t4',u:'A'},
+    {name:'speed',k:'w',h:.12,c:'--t5',u:'rpm'}];
+}
+function scopeReset(){SC.lanes=lanesFor();SC.buf=SC.lanes.map(()=>({mn:new Float32Array(SC.N).fill(NaN),mx:new Float32Array(SC.N).fill(NaN)}));SC.col=0;SC.acc=0;SC.cur=null}
+function sample(){
+  const n=sim.n;let v;
+  if(S.drive==='hb')v={bits:n.port,va:n.A?n.A.v:0,vb:n.B?n.B.v:0,i:n.i,w:sim.w*60/(2*Math.PI)};
+  else v={pin:S.drive==='bjt'?(n.pin===null?0:n.pin):n.vctl,vn:n.vn,i:n.i,id:n.idd,w:sim.w*60/(2*Math.PI)};
+  if(!SC.cur)SC.cur=SC.lanes.map(()=>({mn:Infinity,mx:-Infinity}));
+  SC.lanes.forEach((L,j)=>{const x=v[L.k];const c=SC.cur[j];if(x<c.mn)c.mn=x;if(x>c.mx)c.mx=x});
+}
+function advance(dt){
+  SC.acc+=dt;const colT=S.win/SC.N;
+  while(SC.acc>=colT){SC.acc-=colT;if(SC.cur){SC.buf.forEach((b,j)=>{b.mn[SC.col]=SC.cur[j].mn;b.mx[SC.col]=SC.cur[j].mx})}
+    SC.cur=null;SC.col=(SC.col+1)%SC.N;for(let k=1;k<=6;k++){const c=(SC.col+k)%SC.N;SC.buf.forEach(b=>{b.mn[c]=NaN;b.mx[c]=NaN})}}
+}
+function drawScope(){
+  const dpr=window.devicePixelRatio||1,k=window.__fitK||1;const r=cv.getBoundingClientRect();
+  const W=Math.max(10,Math.round(r.width/k*dpr*k)),H=Math.max(10,Math.round(r.height/k*dpr*k));
+  if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}
+  const sx=W/(r.width/k),sy=H/(r.height/k);cx.setTransform(sx,0,0,sy,0,0);const w=r.width/k,h=r.height/k;
+  const css=getComputedStyle(document.documentElement);const col=n=>css.getPropertyValue(n).trim();
+  cx.fillStyle=col('--scope');cx.fillRect(0,0,w,h);
+  const L0=96,pw=w-L0-58;let y=6;const gh=h-12;
+  cx.font='500 11px IBM Plex Mono, monospace';
+  // vertical grid
+  cx.strokeStyle=col('--grid');cx.lineWidth=1;for(let g=0;g<=10;g++){const x=L0+pw*g/10;cx.beginPath();cx.moveTo(x,4);cx.lineTo(x,h-4);cx.stroke()}
+  // time labels
+  SC.lanes.forEach((L,j)=>{
+    const lh=gh*L.h;const b=SC.buf[j];
+    // scale
+    let lo,hi;
+    if(L.digital){lo=0;hi=1}
+    else if(L.k==='vn'){hi=S.drive==='bjt'||S.drive==='mos'?(((S.diode)?S.vcc+2:sim.n.vbr+5)):60;lo=0;hi=Math.ceil(hi/5)*5}
+    else if(L.k==='va'||L.k==='vb'){hi=S.hb.diode?S.vcc+2:HB.vbr+3;lo=S.hb.diode?-2:Math.min(-2,S.vcc-HB.vbr-3);}
+    else if(L.k==='pin'){lo=0;hi=5.5}
+    else if(L.k==='w'){hi=18000;lo=L.signed?-18000:0}
+    else{let m=0.5;for(let c=0;c<SC.N;c++){const a=Math.max(Math.abs(b.mx[c]||0),Math.abs(b.mn[c]||0));if(a>m)m=a}m=niceUp(m);hi=m;lo=L.signed?-m:0}
+    const Y=v=>y+4+(lh-8)*(1-(v-lo)/(hi-lo));
+    cx.strokeStyle=col('--grid');cx.beginPath();cx.moveTo(L0,y+lh);cx.lineTo(L0+pw,y+lh);cx.stroke();
+    if(lo<0&&!L.digital){cx.setLineDash([2,4]);cx.beginPath();cx.moveTo(L0,Y(0));cx.lineTo(L0+pw,Y(0));cx.stroke();cx.setLineDash([])}
+    cx.fillStyle='#9fb0c4';cx.textAlign='left';cx.fillText(L.name,6,y+14);
+    if(!L.digital){cx.fillStyle='#6e8096';cx.fillText(fmtAx(hi,L.u),6,y+28);if(lo!==0)cx.fillText(fmtAx(lo,L.u),6,y+lh-4);else cx.fillText('0',6,y+lh-4)}
+    // reference: VCC dashed
+    if((L.k==='vn'||L.k==='va'||L.k==='vb')){cx.strokeStyle='rgba(255,123,90,.55)';cx.setLineDash([5,4]);cx.beginPath();cx.moveTo(L0,Y(S.vcc));cx.lineTo(L0+pw,Y(S.vcc));cx.stroke();cx.setLineDash([]);cx.fillStyle='rgba(255,140,110,.9)';cx.textAlign='right';cx.fillText('VCC',L0+pw+52,Y(S.vcc)+4);cx.textAlign='left'}
+    if(L.digital){
+      const cols=['--t1','--t2','--t4','--t3'];
+      for(let bit=0;bit<4;bit++){const yb=y+3+bit*(lh-4)/4,hb=(lh-4)/4-3;cx.strokeStyle=col(cols[bit]);cx.lineWidth=1.4;cx.beginPath();let pen=false;
+        for(let c=0;c<SC.N;c++){const mn=b.mn[c],mx=b.mx[c];if(isNaN(mn)){pen=false;continue}const x=L0+pw*c/SC.N;const l=(mn>>bit)&1,hh=(mx>>bit)&1;
+          const yl=yb+hb*(1-l),yh=yb+hb*(1-hh);if(!pen){cx.moveTo(x,yl);pen=true}else cx.lineTo(x,yl);if(yh!==yl){cx.lineTo(x,yh)}}
+        cx.stroke();cx.fillStyle=col(cols[bit]);cx.textAlign='right';cx.fillText('IN'+(bit+1),L0+pw+28,yb+hb);cx.textAlign='left'}
+    }else{
+      cx.strokeStyle=col(L.c);cx.fillStyle=col(L.c);cx.lineWidth=1.6;cx.beginPath();let pen=false;
+      for(let c=0;c<SC.N;c++){const mn=b.mn[c],mx=b.mx[c];if(isNaN(mn)){pen=false;continue}const x=L0+pw*c/SC.N;
+        const a=Y(Math.max(lo,Math.min(hi,mn))),bb=Y(Math.max(lo,Math.min(hi,mx)));
+        if(!pen){cx.moveTo(x,a);pen=true}else cx.lineTo(x,a);if(Math.abs(a-bb)>.5)cx.lineTo(x,bb)}
+      cx.stroke();
+    }
+    y+=lh;
+  });
+  // sweep cursor
+  const xs=L0+pw*SC.col/SC.N;cx.strokeStyle='rgba(255,255,255,.35)';cx.beginPath();cx.moveTo(xs,4);cx.lineTo(xs,h-4);cx.stroke();
+  cx.fillStyle='#6e8096';cx.textAlign='right';cx.fillText(fmtT(S.win/10)+'/div',w-6,h-6);cx.textAlign='left';
+}
+function niceUp(v){const e=Math.pow(10,Math.floor(Math.log10(v)));const m=v/e;return (m<=1?1:m<=2?2:m<=2.5?2.5:m<=5?5:10)*e}
+function fmtAx(v,u){if(u==='rpm')return (v/1000).toFixed(0)+'k rpm';if(u==='A')return Math.abs(v)<1?(v*1000).toFixed(0)+' mA':v.toFixed(1)+' A';return v.toFixed(0)+' '+u}
+function fmtT(s){return s>=1?s+' s':s>=1e-3?+(s*1e3).toFixed(2)+' ms':+(s*1e6).toFixed(0)+' µs'}
+
+/* ===================== readings ===================== */
+const fV=v=>v===null||v===undefined||isNaN(v)?'—':(Math.abs(v)<10?v.toFixed(2):v.toFixed(1))+' V';
+const fI=v=>{const a=Math.abs(v);return a<1e-4?'0 mA':a<1?(v*1000).toFixed(a<0.01?2:0)+' mA':v.toFixed(2)+' A'};
+const fP=v=>v<1?(v*1000).toFixed(0)+' mW':v.toFixed(2)+' W';
+const rpm=()=>Math.round(sim.w*60/(2*Math.PI));
+function row(name,val,note,cls){return `<tr class="${cls||''}"><td>${name}</td><td class="v">${val}</td><td class="n">${note||''}</td></tr>`}
+function verdict(cls,title,txt){const v=$('#verdict');v.className='verdict '+cls;v.innerHTML=`<b>${title}</b>${txt}`}
+function renderReadings(){
+  const n=sim.n;if(!n||n.vcc===undefined)return;
+  if(S.drive!=='hb'){
+    const bjt=S.drive==='bjt',p=PART[S.part];let h='';
+    h+=row('VCC',fV(n.vcc),'motor supply');
+    h+=row('RB0 pin',n.pin===null?'Hi-Z':fV(n.pin),n.pin===null?'TRIS bit = 1 (input)':'PIC output');
+    if(bjt){h+=row('V<sub>B</sub> base',fV(n.vctl),n.ib>0?'≈ V_BE':'off');h+=row('I<sub>B</sub> base current',fI(n.ib),n.pin!==null&&n.pin>0?`(5 − ${p.vbe}) / ${S.rb} Ω`:'',n.ib>0.025?'bad':'');
+      h+=row('β · I<sub>B</sub> (max I<sub>C</sub>)',fI(n.ilim),`β ≈ ${p.beta}`)}
+    else{h+=row('V<sub>GS</sub> gate',fV(n.vctl),n.pin===null&&!S.pd?'floating: picks up noise!':(n.vctl>=4.5?'fully enhanced':n.vctl>MOS.vth?'partly on':'off'),n.pin===null&&!S.pd?'bad':'');
+      h+=row('Gate current',sim.gPeak?'≤ 50 mA':'0','only on edges: 5 V / 100 Ω while C<sub>iss</sub> charges (~0.2 µs)')}
+    const nodeBad=n.mode==='aval';
+    h+=row(bjt?'V<sub>C</sub> collector':'V<sub>D</sub> drain',fV(n.vn),{sat:'switch ON',lin:'NOT saturated',dio:'clamped by D1: VCC + 0.7',aval:'AVALANCHE: breakdown!',off:'= VCC − back-EMF'}[n.mode],nodeBad?'bad':n.mode==='lin'?'warn':'');
+    h+=row('V across motor',fV(n.vm),n.mode==='dio'||n.mode==='aval'?'reversed by L·di/dt':'');
+    h+=row('Back-EMF E = kω',fV(n.E),rpm()+' rpm');
+    h+=row('I motor',fI(n.i),S.stall?'stalled: VCC/R':'',n.i>(bjt?p.imax:MOS.imax)?'bad':'');
+    h+=row('I through Q1',fI(n.iq),n.mode==='aval'?'avalanche current':'',n.mode==='aval'?'bad':'');
+    h+=row('I through D1',fI(n.idd),S.diode?'freewheeling':'diode not fitted');
+    const pq=n.pq;h+=row('Q1 dissipation',fP(pq),bjt?`rated ${p.pmax} W (no heatsink)`:'',pq>(bjt?p.pmax:2)?'bad':'');
+    h+=row('Last turn-off peak',sim.lastPeak?fV(sim.lastPeak):'—',S.diode?'':(sim.events?`${(sim.lastE*1000).toFixed(2)} mJ into Q1 · ${sim.events} events`:''),!S.diode&&sim.events?'bad':'');
+    $('#rd').innerHTML=h;
+    // verdict
+    if(n.pin===null&&S.drive==='mos'&&!S.pd)verdict('bad','Floating gate','With the pin in Hi-Z and no pull-down, the gate charge drifts and Q1 hovers half-on: the motor twitches and Q1 heats up. Fit the 10 kΩ pull-down.');
+    else if(!S.diode&&(sim.events||n.mode==='aval'))verdict('bad','No flyback diode: voltage spike',`At every turn-off the motor inductance forces its current to keep flowing. With nowhere to go, the ${bjt?'collector':'drain'} jumps to ${fV(n.vbr)} (breakdown of ${bjt?p.name:'IRLZ44N'}). Each event dumps ${(sim.lastE*1000).toFixed(2)} mJ into Q1 and radiates noise that can reset the PIC.`);
+    else if(n.mode==='lin')verdict('warn','Q1 is not saturated',`The motor wants more than β·I<sub>B</sub> = ${fI(n.ilim)}, so Q1 works as an amplifier: V<sub>CE</sub> = ${fV(n.vn)} and it dissipates ${fP(pq)}. ${bjt?'Use a smaller R<sub>B</sub>, a Darlington (TIP120) or a MOSFET.':''}`);
+    else if(bjt&&n.ib>0.02)verdict('warn','High pin current',`I<sub>B</sub> = ${fI(n.ib)}: close to the PIC's 25 mA per-pin limit.`);
+    else if(n.mode==='dio')verdict('ok','Freewheeling through D1','Q1 is off. The motor current circulates through D1 and decays gently; the node is clamped at VCC + 0.7 V.');
+    else if(n.mode==='sat')verdict('ok','Q1 fully ON',`${bjt?'Saturated':'R<sub>DS(on)</sub> ≈ 25 mΩ'}: the motor sees almost all of VCC, and Q1 drops only ${fV(n.vn)}.`);
+    else verdict('ok','Q1 OFF','No current flows. The motor coasts; the node shows VCC minus the back-EMF.');
+  }else{
+    const sw=n.sw;let h='';
+    h+=row('VCC',fV(n.vcc),'');
+    h+=row('PORTB (RB3..RB0)','b\''+[3,2,1,0].map(k=>n.b[k]).join('')+'\'',MODENAME[S.hb.mode]||'');
+    h+=row('Switches ON',['s1','s2','s3','s4'].filter(k=>sw[k]).map(k=>k.toUpperCase()).join(' + ')||'none','',sim.fault?'bad':'');
+    if(!S.hb.shifter&&S.vcc>7)h+=row('P-ch gate when IN=1','5 V',`V<sub>GS</sub> = ${(5-S.vcc).toFixed(1)} V → still ON!`,'bad');
+    const ad=n.A.dev,bd=n.B.dev;const dn=d=>({s1:'via SW1',s2:'via SW2',s3:'via SW3',s4:'via SW4',d1:'D1 conducts',d2:'D2 conducts',d3:'D3 conducts',d4:'D4 conducts',a1:'SW1 avalanche!',a2:'SW2 avalanche!',a3:'SW3 avalanche!',a4:'SW4 avalanche!',float:'floating',short:'SHORT',s:''}[d]||'');
+    h+=row('V<sub>A</sub> (left)',fV(n.A.v),dn(ad),ad[0]==='a'?'bad':'');
+    h+=row('V<sub>B</sub> (right)',fV(n.B.v),dn(bd),bd[0]==='a'?'bad':'');
+    h+=row('V<sub>AB</sub> across motor',fV(n.A.v-n.B.v),'');
+    h+=row('Back-EMF E',fV(n.E),rpm()+' rpm');
+    h+=row('I motor (A→B +)',fI(n.i),Math.abs(n.i)>2.5?'large: plugging / braking current':'',Math.abs(n.i)>2.5?'warn':'');
+    const di=['d1','d2','d3','d4'].filter(k=>Math.abs(n.I[k])>1e-3);
+    h+=row('Diode current',di.length?fI(Math.abs(n.I[di[0]])):'0',di.map(x=>x.toUpperCase()).join(' + ')||'—');
+    if(sim.fault)h+=row('Shoot-through current','≈ '+n.ishort.toFixed(0)+' A','VCC / (R<sub>DS</sub>P + R<sub>DS</sub>N)','bad');
+    h+=row('Last turn-off peak',sim.lastPeak?fV(sim.lastPeak):'—',!S.hb.diode&&sim.events?`${(sim.lastE*1000).toFixed(2)} mJ avalanche`:'',!S.hb.diode&&sim.events?'bad':'');
+    $('#rd').innerHTML=h;
+    const bn=$('#banner');
+    if(sim.fault){verdict('bad','SHOOT-THROUGH!','Both switches of one leg are ON: VCC is shorted to ground through two MOSFETs. In a real board the MOSFETs or the fuse would fail in microseconds. Choose Coast to recover.');bn.hidden=false;bn.textContent='⚡ SHOOT-THROUGH: VCC shorted to GND ≈ '+n.ishort.toFixed(0)+' A'}
+    else{bn.hidden=true;
+      if(!S.hb.shifter&&S.vcc>7)verdict('bad','High-side switches cannot turn off',`A 5 V pin cannot pull a P-channel gate up to VCC = ${S.vcc} V, so SW1/SW2 stay on. Fit a level shifter (e.g. an NPN or a gate-driver IC) or keep VCC ≈ 5 V.`);
+      else if(ad[0]==='a'||bd[0]==='a'||(!S.hb.diode&&sim.events))verdict('bad','No freewheeling path: avalanche',`The motor current had nowhere to go when the switches opened, so a node jumped to the ${HB.vbr} V breakdown of a MOSFET.`);
+      else if(di.length)verdict('ok','Freewheeling',`Switches opened while current flowed, so ${di.map(x=>x.toUpperCase()).join(' and ')} carry it${di.length===2?' back into the supply (regeneration)':''}; the node is clamped one diode-drop beyond the rail.`);
+      else verdict('ok',MODENAME[S.hb.mode]||'Custom',{fwd:'SW1 + SW4: current flows A → B and the motor turns forward.',rev:'SW2 + SW3: current flows B → A and the motor turns in reverse.',coast:'All switches off: the motor freewheels and slows down slowly.',brakeL:'SW3 + SW4 short the motor terminals together: the back-EMF drives a reverse current that brakes the motor hard.',brakeH:'SW1 + SW2 short the motor to VCC on both sides: same braking effect.',custom:'A pattern outside the standard table.',short:''}[S.hb.mode]||'')}
+  }
+}
+
+/* ===================== schematic live update ===================== */
+function updateSchematic(){
+  const n=sim.n;if(!n||n.vcc===undefined)return;
+  const rot=$('#rotor');if(rot){const c=rot.getAttribute('transform').split(')')[0]+')';rot.setAttribute('transform',`${c} rotate(${(sim.vis%360).toFixed(1)})`)}
+  setTag('tVcc','VCC = '+n.vcc.toFixed(1)+' V');
+  if(S.drive!=='hb'){
+    const bjt=S.drive==='bjt';
+    setTag('tPin','RB0 = '+(n.pin===null?'Hi-Z':n.pin.toFixed(0)+' V'));
+    setTag('tCtl',(bjt?'V_B = ':'V_G = ')+fV(n.vctl),n.pin===null&&!bjt&&!S.pd?'bad':'');
+    setTag('tN',(bjt?'V_C = ':'V_D = ')+fV(n.vn),n.mode==='aval'?'bad':'');
+    setTag('tVm','V_motor = '+fV(n.vm));
+    setTag('tIm','I_M = '+fI(n.i));setTag('tId','I_D1 = '+fI(n.idd));setTag('tIq',(bjt?'I_C = ':'I_D = ')+fI(n.iq),n.mode==='aval'?'bad':'');
+    setTag('tIb',bjt?'I_B = '+fI(n.ib):(n.pin===null?(S.pd?'pulled to 0 V':'floating gate!'):'gate: no DC current'));
+    const iref=0.5;
+    setFlow('fSup',n.iq,n.mode==='aval'?'a':'n',iref);setFlow('fMot',n.i,'n',iref);setFlow('fQ',n.iq,n.mode==='aval'?'a':'n',iref);setFlow('fD',n.idd,'d',iref);setFlow('fB',bjt?n.ib*40:0,'n',iref);
+    const pd=$('#pinDot');if(pd)pd.setAttribute('fill',n.pin===null?'var(--card)':n.pin>2.5?'var(--hi)':'var(--lo)');
+    const dg=$('#dGrp');if(dg){dg.classList.toggle('ghost',!S.diode);$('#dLab2').textContent=S.diode?'flyback diode':'NOT fitted'}
+    const pdG=$('#pdG');if(pdG)pdG.classList.toggle('ghost',!S.pd);
+    const qg=$('#qglow');if(qg)qg.style.opacity=n.mode==='aval'?1:n.mode==='lin'?.5:0;
+  }else{
+    const sw=n.sw;
+    setTag('tPort','PORTB = b\'xxxx'+[3,2,1,0].map(k=>n.b[k]).join('')+'\'');
+    setTag('tA','V_A = '+fV(n.A.v),n.A.dev[0]==='a'?'bad':'');setTag('tB','V_B = '+fV(n.B.v),n.B.dev[0]==='a'?'bad':'');
+    setTag('tIm','I_M = '+fI(n.i)+(n.i>1e-3?' →':n.i<-1e-3?' ←':''));setTag('tE','E = '+fV(n.E));
+    const iref=0.6;const I=n.I;
+    const kind=(dev,a)=>dev&&dev[0]==='a'?'a':'n';
+    setFlow('fS1',I.s1,n.A.dev==='a1'?'a':'n',iref);setFlow('fS3',I.s3,n.A.dev==='a3'?'a':'n',iref);setFlow('fS2',I.s2,n.B.dev==='a2'?'a':'n',iref);setFlow('fS4',I.s4,n.B.dev==='a4'?'a':'n',iref);
+    ['d1','d2','d3','d4'].forEach(d=>setFlow('fD'+d[1],I[d],'d',iref));setFlow('fM',n.i,'n',iref);
+    if(sim.fault){if(sw.s1&&sw.s3){setFlow('fS1',3,'s',1);setFlow('fS3',3,'s',1)}if(sw.s2&&sw.s4){setFlow('fS2',3,'s',1);setFlow('fS4',3,'s',1)}}
+    for(const k of ['s1','s2','s3','s4']){const on=sw[k];const bl=$('#'+k+'Bl'),bx=$('#'+k+'Box');const x=+bl.getAttribute('x1'),y=+bl.getAttribute('y1');
+      bl.setAttribute('x2',on?x:x+(k==='s1'||k==='s3'?-18:18));bl.setAttribute('y2',on?y-46:y-40);bx.classList.toggle('on',on)}
+    ['IN1','IN2','IN3','IN4'].forEach((nm,k)=>{const d=$('#'+nm+'Dot');if(d)d.setAttribute('fill',n.b[k]?'var(--hi)':'var(--lo)')});
+    const dg=$('#dGrp');if(dg)dg.classList.toggle('ghost',!S.hb.diode);
+  }
+}
+
+/* ===================== explanations & code ===================== */
+function hlAsm(s){const i=s.indexOf(';');const code=i>=0?s.slice(0,i):s,cm=i>=0?s.slice(i):'';
+  const c=code.replace(/\b(BSF|BCF|MOVLW|MOVWF|CALL|GOTO|RETURN|DECFSZ|CLRF|NOP)\b/g,'<span class="k">$1</span>').replace(/\b(LIST|ORG|EQU|END|__CONFIG|#include)\b/g,'<span class="d">$1</span>').replace(/(b'[01]+'|0x[0-9A-Fa-f]+)/g,'<span class="n">$1</span>');
+  return c+(cm?`<span class="c">${cm.replace(/</g,'&lt;')}</span>`:'')}
+function hlC(s){const esc=s.replace(/&/g,'&amp;').replace(/</g,'&lt;');const i=esc.indexOf('//');const code=i>=0?esc.slice(0,i):esc,cm=i>=0?esc.slice(i):'';
+  return code.replace(/\b(void|unsigned|char|for|while|if|const|return|int)\b/g,'<span class="k">$1</span>').replace(/(#\w+)/g,'<span class="d">$1</span>').replace(/\b(0x[0-9A-Fa-f]+|\d+)\b/g,'<span class="n">$1</span>')+(cm?`<span class="c">${cm}</span>`:'')}
+const CODE={
+low:{asm:`; Motor on RB0 through Q1 (low-side switch)
+        LIST    P=16F84A
+        #include <p16f84a.inc>
+        __CONFIG _XT_OSC & _WDT_OFF & _PWRTE_ON
+        ORG     0x000
+        BCF     PORTB,0         ; latch = 0 first: motor stays OFF
+        BSF     STATUS,RP0      ; bank 1
+        BCF     TRISB,0         ; RB0 becomes an output
+        BCF     STATUS,RP0      ; bank 0
+MAIN    BSF     PORTB,0         ; Q1 ON  -> motor runs
+        CALL    DELAY
+        BCF     PORTB,0         ; Q1 OFF -> current freewheels in D1
+        CALL    DELAY
+        GOTO    MAIN`,
+c:`#include <xc.h>
+#pragma config FOSC = XT, WDTE = OFF, PWRTE = ON, CP = OFF
+#define _XTAL_FREQ 4000000
+#define MOTOR  PORTBbits.RB0
+
+void main(void)
+{
+    MOTOR = 0;              // latch first: motor OFF
+    TRISBbits.TRISB0 = 0;   // then make RB0 an output
+
+    for (;;) {              // software PWM: 1 kHz, 75 % duty
+        MOTOR = 1;  __delay_us(750);   // Q1 ON
+        MOTOR = 0;  __delay_us(250);   // Q1 OFF: D1 freewheels
+    }
+}`,hlOn:[9],hlOff:[11]},
+hb:{asm:`; H-bridge on RB0..RB3
+; RB0=IN1 SW1 (P-ch, high-A) ON when 0 | RB2=IN3 SW3 (N-ch, low-A) ON when 1
+; RB1=IN2 SW2 (P-ch, high-B) ON when 0 | RB3=IN4 SW4 (N-ch, low-B) ON when 1
+FWD     EQU     b'00001010'     ; SW1 + SW4 : A -> B
+REV     EQU     b'00000101'     ; SW2 + SW3 : B -> A
+COAST   EQU     b'00000011'     ; all OFF
+BRAKE   EQU     b'00001111'     ; SW3 + SW4 : motor shorted
+        MOVLW   COAST           ; safe pattern into the latch FIRST
+        MOVWF   PORTB
+        BSF     STATUS,RP0
+        MOVLW   b'11110000'     ; then RB0..RB3 = outputs
+        MOVWF   TRISB
+        BCF     STATUS,RP0
+MAIN    MOVLW   FWD             ; forward
+        MOVWF   PORTB
+        CALL    DELAY_LONG
+        MOVLW   COAST           ; dead time: never jump FWD -> REV
+        MOVWF   PORTB
+        CALL    DELAY_SHORT
+        MOVLW   REV             ; reverse
+        MOVWF   PORTB
+        CALL    DELAY_LONG
+        MOVLW   BRAKE           ; dynamic brake
+        MOVWF   PORTB
+        CALL    DELAY_LONG
+        GOTO    MAIN`,
+c:`#include <xc.h>
+#pragma config FOSC = XT, WDTE = OFF, PWRTE = ON, CP = OFF
+#define _XTAL_FREQ 4000000
+#define FWD    0x0A    // SW1 + SW4
+#define REV    0x05    // SW2 + SW3
+#define COAST  0x03    // all off
+#define BRAKE  0x0F    // SW3 + SW4
+
+void motor(unsigned char m)
+{
+    PORTB = (PORTB & 0xF0) | COAST;  // open everything first
+    __delay_us(50);                  // dead time
+    PORTB = (PORTB & 0xF0) | m;
+}
+
+void main(void)
+{
+    PORTB = COAST;      // latch first
+    TRISB = 0xF0;       // then RB0..RB3 outputs
+    for (;;) {
+        motor(FWD);   __delay_ms(1000);
+        motor(REV);   __delay_ms(1000);
+        motor(BRAKE); __delay_ms(500);
+        for (int k = 0; k < 2000; k++) {   // 75 % speed forward
+            PORTB = FWD;              __delay_us(750);
+            PORTB = FWD & ~0x08;      __delay_us(250); // SW4 off
+        }
+    }
+}`}};
+const HBLINES={fwd:[13,14],coast:[16,17],rev:[19,20],brakeL:[22,23]};
+function howLow(){const bjt=S.drive==='bjt';
+  return bjt?`<p>The PIC pin cannot supply a motor (max 25 mA, 5 V). Q1 is a <b>low-side switch</b>: the motor sits between VCC and the collector, and the PIC only supplies a small <b>base current</b> through R<sub>B</sub>.</p>
+  <h4>Saturating the BJT</h4><ul><li>I<sub>B</sub> = (5 V − V<sub>BE</sub>) / R<sub>B</sub> = (5 − ${PART[S.part].vbe}) / ${S.rb} Ω = <b>${fI(Math.max(0,(5-PART[S.part].vbe)/S.rb))}</b>.</li>
+  <li>Q1 can carry at most β·I<sub>B</sub>. For a hard switch choose I<sub>B</sub> ≥ 2–5 × I<sub>motor</sub>/β. The 12 V stall current is 2.4 A: a 2N2222 (β≈100) cannot saturate there, so it heats up. Try <b>Stall</b> or the <b>TIP120</b>.</li>
+  <li>A Darlington gives β≈1000 but drops ≈ 0.9–2 V (V<sub>CE(sat)</sub>), so it wastes more power than a MOSFET.</li></ul>
+  <h4>Why the flyback diode?</h4><p>The winding is an inductor: v = L·di/dt. When Q1 switches off, the current cannot stop instantly, so the collector voltage soars until something conducts. <b>With D1</b> the current circulates through the diode and the collector is clamped at VCC + 0.7 V. <b>Without D1</b> it rises to the transistor's breakdown (40 V for a 2N2222) and the energy ½·L·I² is dumped into Q1 every time. Switch D1 off, set the time base to 2 ms and toggle RB0 to see the spike.</p>
+  <h4>PWM speed control</h4><p>Choose <b>PWM</b>: the average voltage is duty × VCC. With D1 the current keeps flowing during the off-time, so the torque is smooth.</p>`
+  :`<p>A logic-level N-MOSFET (IRLZ44N) is <b>voltage driven</b>: once the gate charge is in, no DC current flows from the PIC pin. At V<sub>GS</sub> = 5 V, R<sub>DS(on)</sub> ≈ 25 mΩ, so even 2.4 A drops only 60 mV and it barely heats.</p>
+  <h4>The two gate resistors</h4><ul><li><b>R<sub>G</sub> = 100 Ω</b> limits the gate charging current (≤ 50 mA for ~0.2 µs) and damps ringing on the gate.</li><li><b>10 kΩ pull-down</b>: after reset every PIC pin is an <b>input</b> (TRIS = 1). Without the pull-down the gate floats and the MOSFET can switch half-on. Try <b>Hi-Z</b> with the pull-down removed.</li></ul>
+  <h4>Flyback diode</h4><p>The MOSFET's internal body diode sits across drain–source, not across the motor, so it does <b>not</b> clamp the turn-off spike. Without D1 the drain rises to the 55 V avalanche rating at every switch-off. Set the time base to 2 ms and toggle RB0.</p>
+  <h4>Logic-level matters</h4><p>A standard MOSFET (e.g. IRF540) needs 10 V on the gate; at 5 V it would only be partly on. Pick a part whose R<sub>DS(on)</sub> is specified at V<sub>GS</sub> = 4.5 V.</p>`}
+function howHB(){
+  const rows=[['Forward','fwd',[0,1,0,1],'SW1 + SW4'],['Reverse','rev',[1,0,1,0],'SW2 + SW3'],['Coast','coast',[1,1,0,0],'none'],['Brake (low)','brakeL',[1,1,1,1],'SW3 + SW4'],['Brake (high)','brakeH',[0,0,0,0],'SW1 + SW2'],['Shoot-through ✗','short',[0,1,1,0],'SW1 + SW3']];
+  return `<p>An H-bridge lets one supply drive the motor in <b>both directions</b>. Closing one high-side switch and the opposite low-side switch puts VCC across the motor one way or the other.</p>
+  <table class="tt"><tr><th>Mode</th><th>IN1</th><th>IN2</th><th>IN3</th><th>IN4</th><th>PORTB</th><th>ON</th></tr>
+  ${rows.map(([nm,k,b,on])=>`<tr class="${S.hb.mode===k?'cur':''} ${k==='short'?'forbid':''}"><td>${nm}</td>${b.map(x=>`<td>${x}</td>`).join('')}<td>0x${bitsToPort(b).toString(16).toUpperCase().padStart(2,'0')}</td><td>${on}</td></tr>`).join('')}</table>
+  <h4>Rules for driving it</h4><ul>
+  <li><b>Never</b> turn on both switches of one leg (SW1+SW3 or SW2+SW4): that shorts VCC to ground (shoot-through).</li>
+  <li>MOSFETs switch off more slowly than they switch on, so change direction through <b>Coast</b> with a short <b>dead time</b>, as the code does.</li>
+  <li>The 10 kΩ pull-ups (P-ch) and pull-downs (N-ch) hold every switch <b>off</b> while the PIC is in reset and its pins are inputs. Write <code>COAST</code> to PORTB <i>before</i> clearing TRISB.</li>
+  <li>A P-channel gate must be pulled to VCC to turn off. A 5 V pin can only do that when VCC ≈ 5 V; above that you need a <b>level shifter</b>. Untick it at 12 V and watch.</li></ul>
+  <h4>Coast versus brake</h4><p><b>Coast</b> opens everything: after the diodes return the stored current to the supply, the motor spins down slowly on friction. <b>Brake</b> shorts the terminals, so the back-EMF drives a reverse current that stops the motor quickly. Watch the speed trace.</p>
+  <h4>Freewheeling diodes</h4><p>When switches open, the motor current flows on through the diodes: D3 + D2 after Forward (back into VCC). During PWM only SW4 opens, so the current loops through SW1 and D2 (slow decay). MOSFETs include body diodes; bridges built from relays or BJTs need four external diodes. Untick them to see the avalanche spikes.</p>`}
+function renderEx(){
+  const ex=$('#ex');
+  if(S.ex==='how')ex.innerHTML=S.drive==='hb'?howHB():howLow();
+  else{const set=S.drive==='hb'?CODE.hb:CODE.low;const src=S.lang==='asm'?set.asm:set.c;
+    ex.innerHTML=`<div class="codesel seg" data-k="lang"><button type="button" data-v="asm" aria-pressed="${S.lang==='asm'}">Assembly (MPASM)</button><button type="button" data-v="c" aria-pressed="${S.lang==='c'}">C (XC8)</button></div>
+    <pre class="code" id="code">${src.split('\n').map((l,i)=>`<span class="ln" data-i="${i}">${S.lang==='asm'?hlAsm(l):hlC(l)||' '}</span>`).join('')}</pre>
+    <p class="note">${S.drive==='hb'?'The PIC16F84A has no PWM hardware, so speed control is done in software; a PIC16F877 can use its CCP module instead. Delays are shortened in the demo.':'The PIC16F84A has no CCP/PWM module, so PWM is generated in software. Highlighted line = what the pin is doing now.'}</p>`;
+    ex.querySelector('[data-k="lang"]').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.lang=b.dataset.v;renderEx()});
+    highlightCode();}
+}
+let lastHL='';
+function highlightCode(){
+  if(S.ex!=='code'||S.lang!=='asm')return;let lines=[];
+  if(S.drive==='hb')lines=HBLINES[S.hb.mode]||[];
+  else{const pv=pinLevel(sim.t);lines=pv===5?CODE.low.hlOn:pv===0?CODE.low.hlOff:[]}
+  const key=lines.join(',');if(key===lastHL&&document.querySelector('#code .hl'))return;lastHL=key;
+  document.querySelectorAll('#code .ln').forEach(l=>l.classList.toggle('hl',lines.includes(+l.dataset.i)));
+}
+function syncExTabs(){document.querySelectorAll('.itabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.ex===S.ex));renderEx()}
+document.querySelector('.itabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.ex=b.dataset.ex;syncExTabs()});
+
+/* ===================== drive switching ===================== */
+function setDrive(d){
+  S.drive=d;S.hb.demo=false;sim.i=0;sim.w=0;sim.events=0;sim.lastE=0;sim.lastPeak=0;sim.aval=false;sim.avalE=0;sim.fault=false;sim.lastPin=undefined;
+  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.drive===d));
+  if(d==='hb'&&S.vcc<5)S.vcc=12;
+  buildControls();buildSchematic();scopeReset();renderEx();step(1e-6);updateSchematic();renderReadings();
+}
+document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setDrive(b.dataset.drive)});
+$('#win').addEventListener('change',e=>{S.win=+e.target.value;scopeReset();updSlow()});
+$('#pause').addEventListener('click',()=>{S.paused=!S.paused;$('#pause').textContent=S.paused?'▶ Resume':'❚❚ Pause'});
+function updSlow(){const f=S.win/SWEEP;$('#slowmo').textContent='slow motion ×1/'+Math.round(1/f).toLocaleString()}
+
+/* ===================== main loop ===================== */
+const SWEEP=4; // seconds of wall time per screen
+function step(dt){if(S.drive==='hb')stepHB(dt);else stepLow(dt);sim.t+=dt}
+let last=performance.now(),rdT=0;sim.vis=0;
+function frame(now){
+  const wdt=Math.min(0.05,(now-last)/1000);last=now;
+  if(!S.paused){
+    const simDt=wdt*S.win/SWEEP;const h=1e-6;let n=Math.min(60000,Math.round(simDt/h));const hh=n?simDt/n:0;
+    for(let k=0;k<n;k++){step(hh);sample();advance(hh)}
+    sim.vis+=sim.w/1790*720*wdt; // visual rotation: 2 rev/s at full speed
+    animFlows(wdt);
+  }
+  updateSchematic();drawScope();
+  rdT+=wdt;if(rdT>0.12){rdT=0;renderReadings();highlightCode()}
+  requestAnimationFrame(frame);
+}
+/* ===================== fit ===================== */
+const DW=1600,DH=900;
+function fit(){const app=$('#app'),vw=window.innerWidth,vh=window.innerHeight,on=vw>=760&&vw/vh>=1.1;
+  document.documentElement.classList.toggle('fit',on);
+  if(on){const k=Math.min(vw/DW,vh/DH);window.__fitK=k;app.style.transform=`scale(${k})`;app.style.left=Math.max(0,(vw-DW*k)/2)+'px';app.style.top=Math.max(0,(vh-DH*k)/2)+'px'}
+  else{window.__fitK=1;app.style.transform='';app.style.left='';app.style.top=''}}
+window.addEventListener('resize',fit);
+fit();updSlow();setDrive('bjt');requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
