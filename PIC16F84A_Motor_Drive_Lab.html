@@ -138,11 +138,12 @@ html.fit .col.left .card{flex:1}
 <body>
 <div class="app" id="app">
 <header>
-  <div><h1>PIC Motor Drive <span>Lab</span></h1><div class="sub">PIC16F84A · low-side BJT · low-side MOSFET · H-bridge · flyback diodes</div></div>
+  <div><h1>PIC Motor Drive <span>Lab</span></h1><div class="sub">PIC16F84A · BJT · MOSFET · H-bridge · L293D stepper · flyback diodes</div></div>
   <nav class="tabs" role="tablist" aria-label="Drive circuit">
     <button role="tab" data-drive="bjt" aria-selected="true">① BJT low-side</button>
     <button role="tab" data-drive="mos" aria-selected="false">② MOSFET low-side</button>
     <button role="tab" data-drive="hb" aria-selected="false">③ H-bridge</button>
+    <button role="tab" data-drive="st" aria-selected="false">④ Stepper (L293D)</button>
   </nav>
 </header>
 <div class="main">
@@ -186,7 +187,7 @@ const CLAMP={
   sch:{short:'1N5819 Schottky',v:0.35,trr:0,desc:'Schottky: lower forward drop and no reverse-recovery spike. The best choice for fast PWM.'},
   zen:{short:'1N4007 + 24 V Zener',v:24.7,trr:3e-6,desc:'Diode in series with a 24 V Zener: clamps at VCC + 24.7 V, so the current dies several times faster (used for relays and solenoids). VCC + V<sub>Z</sub> must stay below the switch rating.'}};
 const dOn=()=>S.clamp!=='none';
-const THERM={'2N2222':{rja:200,tj:150,pkg:'TO-92'},'TIP120':{rja:62.5,tj:150,pkg:'TO-220'},IRLZ44N:{rja:62,tj:175,pkg:'TO-220'},HB:{rja:62,tj:175,pkg:'TO-220'}};
+const THERM={L293D:{rja:80,tj:150,pkg:'DIP-16, GND pins on copper'},'2N2222':{rja:200,tj:150,pkg:'TO-92'},'TIP120':{rja:62.5,tj:150,pkg:'TO-220'},IRLZ44N:{rja:62,tj:175,pkg:'TO-220'},HB:{rja:62,tj:175,pkg:'TO-220'}};
 const S={drive:'bjt',vcc:12,part:'2N2222',rb:1000,pd:true,clamp:'std',pin:'high',pwmF:1000,duty:60,load:1,stall:false,win:0.05,paused:false,
   hb:{mode:'fwd',bits:[0,1,0,1],duty:100,shifter:true,demo:false,diode:true,decay:'slow'},ex:'how',lang:'asm',armed:false,done:new Set()};
 try{const d=JSON.parse(localStorage.getItem('motorlab-done')||'[]');d.forEach(x=>S.done.add(x))}catch(e){}
@@ -417,10 +418,10 @@ function setTag(id,txt,cls){const g=document.getElementById(id);if(!g)return;con
     const x0=a==='end'?x-w:a==='middle'?x-w/2:x;r.setAttribute('x',x0);r.setAttribute('width',w);r.setAttribute('y',y);t.setAttribute('x',x0+7);t.setAttribute('y',y+15)}
   if(cls!==undefined)g.classList.toggle('bad',cls==='bad')}
 function buildSchematic(){
-  $('#sch').innerHTML=S.drive==='hb'?buildHB():buildLow();
+  $('#sch').innerHTML=S.drive==='st'?buildST():S.drive==='hb'?buildHB():buildLow();
   for(const k in flowEls)delete flowEls[k];
   document.querySelectorAll('#sch .flow').forEach(p=>{flowEls[p.id]={el:p,off:0,i:0}});
-  $('#schTitle').textContent={bjt:'Circuit ①: NPN BJT low-side switch',mos:'Circuit ②: N-channel MOSFET low-side switch',hb:'Circuit ③: H-bridge'}[S.drive];
+  $('#schTitle').textContent={bjt:'Circuit ①: NPN BJT low-side switch',mos:'Circuit ②: N-channel MOSFET low-side switch',hb:'Circuit ③: H-bridge',st:'Circuit ④: two-phase stepper on an L293D'}[S.drive];
   // tags need layout before measuring
   document.querySelectorAll('#sch .tag text').forEach(t=>t.textContent='');
 }
@@ -431,6 +432,7 @@ function animFlows(wdt){for(const k in flowEls){const f=flowEls[k];if(Math.abs(f
 /* ===================== controls ===================== */
 function segBtns(name,opts,cur){return `<div class="seg" data-k="${name}">${opts.map(([v,l,c])=>`<button type="button" class="${c||''}" data-v="${v}" aria-pressed="${String(v)===String(cur)}">${l}</button>`).join('')}</div>`}
 function buildControls(){
+  if(S.drive==='st'){buildControlsST();return}
   const d=S.drive;let h=`<div class="grp"><div class="lbl">Motor supply VCC <b id="vccV">${S.vcc.toFixed(1)} V</b></div><input type="range" id="vcc" min="5" max="12" step="0.5" value="${S.vcc}"></div>`;
   if(d==='hb'){const dio=S.hb.diode;
     h+=`<div class="grp"><label class="toggle big ${dio?'on':'off'}" id="dioT"><input type="checkbox" id="dio" ${dio?'checked':''}><span><b>Freewheeling diodes D1–D4</b><small>MOSFET body diodes or external Schottkys</small></span></label></div>`}
@@ -499,6 +501,13 @@ function syncHBctl(){
 /* ===================== scope ===================== */
 const cv=$('#scope'),cx=cv.getContext('2d');const SC={N:600,col:0,acc:0,buf:[],lanes:[]};
 function lanesFor(){
+  if(S.drive==='st')return[
+    {name:'PORTB',k:'bits',h:.2,digital:true,bits:['IN1','IN2','EN1','IN3','IN4','EN2']},
+    {name:'I_A coil A',k:'iA',h:.19,c:'--t2',u:'A',signed:true},
+    {name:'I_B coil B',k:'iB',h:.19,c:'--t4',u:'A',signed:true},
+    {name:'V coil A',k:'vA',h:.16,c:'--t1',u:'V'},
+    {name:'rotor (full steps)',k:'pos',h:.26,c:'--t3',u:'st'},
+    {name:'command',k:'cmd',overlay:true,c:'--t5',u:'st'}];
   if(S.drive==='hb')return[
     {name:'IN1..IN4',k:'bits',h:.16,digital:true},
     {name:'V_A',k:'va',h:.22,c:'--t2',u:'V',sym:true},
@@ -515,7 +524,8 @@ function lanesFor(){
 function scopeReset(){SC.lanes=lanesFor();SC.buf=SC.lanes.map(()=>({mn:new Float32Array(SC.N).fill(NaN),mx:new Float32Array(SC.N).fill(NaN)}));SC.col=0;SC.acc=0;SC.cur=null}
 function sample(){
   const n=sim.n;let v;
-  if(S.drive==='hb')v={bits:n.port,va:n.A?n.A.v:0,vb:n.B?n.B.v:0,i:n.i,w:sim.w*60/(2*Math.PI)};
+  if(S.drive==='st')v={bits:n.port,iA:n.iA,iB:n.iB,vA:n.vA,pos:sim.st.th/(Math.PI/2),cmd:sim.st.cmd/(Math.PI/2)};
+  else if(S.drive==='hb')v={bits:n.port,va:n.A?n.A.v:0,vb:n.B?n.B.v:0,i:n.i,w:sim.w*60/(2*Math.PI)};
   else v={pin:S.drive==='bjt'?(n.pin===null?0:n.pin):n.vctl,vn:n.vn,i:n.i,id:n.idd,w:sim.w*60/(2*Math.PI)};
   if(!SC.cur)SC.cur=SC.lanes.map(()=>({mn:Infinity,mx:-Infinity}));
   SC.lanes.forEach((L,j)=>{const x=v[L.k];const c=SC.cur[j];if(x<c.mn)c.mn=x;if(x>c.mx)c.mx=x});
@@ -538,10 +548,17 @@ function drawScope(){
   cx.strokeStyle=col('--grid');cx.lineWidth=1;for(let g=0;g<=10;g++){const x=L0+pw*g/10;cx.beginPath();cx.moveTo(x,4);cx.lineTo(x,h-4);cx.stroke()}
   // time labels
   SC.lanes.forEach((L,j)=>{
-    const lh=gh*L.h;const b=SC.buf[j];
+    const b=SC.buf[j];
+    if(L.overlay){const P=SC.lanes[j-1];if(!P||!P._Y)return;cx.strokeStyle=col(L.c);cx.lineWidth=1.4;cx.setLineDash([5,4]);cx.beginPath();let pen=false;
+      for(let c=0;c<SC.N;c++){const v=b.mx[c];if(isNaN(v)){pen=false;continue}const x=L0+pw*c/SC.N,yy=P._Y(Math.max(P._lo,Math.min(P._hi,v)));if(!pen){cx.moveTo(x,yy);pen=true}else cx.lineTo(x,yy)}
+      cx.stroke();cx.setLineDash([]);cx.fillStyle=col(L.c);cx.textAlign='right';cx.fillText('- - command',L0+pw-6,P._y+14);cx.textAlign='left';return}
+    const lh=gh*L.h;
     // scale
     let lo,hi;
     if(L.digital){lo=0;hi=1}
+    else if(L.k==='pos'){lo=Infinity;hi=-Infinity;const b2=SC.buf[j+1];for(let c=0;c<SC.N;c++){for(const v of[b.mn[c],b.mx[c],b2?b2.mx[c]:NaN])if(!isNaN(v)){if(v<lo)lo=v;if(v>hi)hi=v}}
+      if(!isFinite(lo)){lo=0;hi=4}const mid=(lo+hi)/2,half=Math.max(2,(hi-lo)/2*1.1);lo=mid-half;hi=mid+half}
+    else if(L.k==='vA'){hi=S.vcc+2;lo=-hi}
     else if(L.k==='vn'){hi=dOn()?S.vcc+CLAMP[S.clamp].v+2:(sim.n.vbr||40)+5;lo=0;hi=Math.ceil(hi/5)*5}
     else if(L.k==='va'||L.k==='vb'){hi=S.hb.diode?S.vcc+2:HB.vbr+3;lo=S.hb.diode?-2:Math.min(-2,S.vcc-HB.vbr-3);}
     else if(L.k==='pin'){lo=0;hi=5.5}
@@ -555,11 +572,11 @@ function drawScope(){
     // reference: VCC dashed
     if((L.k==='vn'||L.k==='va'||L.k==='vb')){cx.strokeStyle='rgba(255,123,90,.55)';cx.setLineDash([5,4]);cx.beginPath();cx.moveTo(L0,Y(S.vcc));cx.lineTo(L0+pw,Y(S.vcc));cx.stroke();cx.setLineDash([]);cx.fillStyle='rgba(255,140,110,.9)';cx.textAlign='right';cx.fillText('VCC',L0+pw+52,Y(S.vcc)+4);cx.textAlign='left'}
     if(L.digital){
-      const cols=['--t1','--t2','--t4','--t3'];
-      for(let bit=0;bit<4;bit++){const yb=y+3+bit*(lh-4)/4,hb=(lh-4)/4-3;cx.strokeStyle=col(cols[bit]);cx.lineWidth=1.4;cx.beginPath();let pen=false;
+      const cols=['--t1','--t2','--t4','--t3','--t5','--t1'],labs=L.bits||['IN1','IN2','IN3','IN4'],nb=labs.length;
+      for(let bit=0;bit<nb;bit++){const yb=y+3+bit*(lh-4)/nb,hb=(lh-4)/nb-2;cx.strokeStyle=col(cols[bit]);cx.lineWidth=1.4;cx.beginPath();let pen=false;
         for(let c=0;c<SC.N;c++){const mn=b.mn[c],mx=b.mx[c];if(isNaN(mn)){pen=false;continue}const x=L0+pw*c/SC.N;const l=(mn>>bit)&1,hh=(mx>>bit)&1;
           const yl=yb+hb*(1-l),yh=yb+hb*(1-hh);if(!pen){cx.moveTo(x,yl);pen=true}else cx.lineTo(x,yl);if(yh!==yl){cx.lineTo(x,yh)}}
-        cx.stroke();cx.fillStyle=col(cols[bit]);cx.textAlign='right';cx.fillText('IN'+(bit+1),L0+pw+28,yb+hb);cx.textAlign='left'}
+        cx.stroke();cx.fillStyle=col(cols[bit]);cx.textAlign='right';cx.fillText(labs[bit],L0+pw+28,yb+hb);cx.textAlign='left'}
     }else{
       cx.strokeStyle=col(L.c);cx.fillStyle=col(L.c);cx.lineWidth=1.6;cx.beginPath();let pen=false;
       for(let c=0;c<SC.N;c++){const mn=b.mn[c],mx=b.mx[c];if(isNaN(mn)){pen=false;continue}const x=L0+pw*c/SC.N;
@@ -575,8 +592,8 @@ function drawScope(){
     cx.fillStyle='#ff922b';cx.beginPath();cx.moveTo(xt-6,4);cx.lineTo(xt+6,4);cx.lineTo(xt,12);cx.fill();cx.textAlign='left';cx.fillText(S.paused?' turn-off (triggered)':' armed…',xt+4,14)}
   if(SC.hx!=null&&SC.hx>=L0&&SC.hx<=L0+pw){const c=Math.min(SC.N-1,Math.floor((SC.hx-L0)/pw*SC.N));const xh=L0+pw*c/SC.N;
     cx.strokeStyle='rgba(255,255,255,.75)';cx.beginPath();cx.moveTo(xh,4);cx.lineTo(xh,h-4);cx.stroke();
-    SC.lanes.forEach((L,j)=>{const b=SC.buf[j];const mn=b.mn[c],mx=b.mx[c];if(isNaN(mn)||L.digital)return;
-      const f=v=>L.u==='A'?(Math.abs(v)<1?(v*1000).toFixed(0)+' mA':v.toFixed(2)+' A'):L.u==='rpm'?Math.round(v)+' rpm':v.toFixed(Math.abs(v)<10?2:1)+' V';
+    SC.lanes.forEach((L,j)=>{const b=SC.buf[j];const mn=b.mn[c],mx=b.mx[c];if(isNaN(mn)||L.digital||L.overlay)return;
+      const f=v=>L.u==='st'?v.toFixed(2)+' steps':L.u==='A'?(Math.abs(v)<1?(v*1000).toFixed(0)+' mA':v.toFixed(2)+' A'):L.u==='rpm'?Math.round(v)+' rpm':v.toFixed(Math.abs(v)<10?2:1)+' V';
       const txt=Math.abs(mx-mn)<(L.u==='A'?0.005:0.05)?f(mx):f(mn)+' … '+f(mx);
       cx.font='600 11px IBM Plex Mono, monospace';const tw=cx.measureText(txt).width+10;const bx=xh+tw+8>L0+pw?xh-tw-6:xh+6;
       cx.fillStyle='rgba(14,21,32,.9)';cx.fillRect(bx,L._y+3,tw,16);cx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue(L.c).trim();cx.fillText(txt,bx+5,L._y+15)});
@@ -584,7 +601,7 @@ function drawScope(){
   cx.fillStyle='#6e8096';cx.textAlign='right';cx.fillText(fmtT(S.win/10)+'/div',w-6,h-6);cx.textAlign='left';
 }
 function niceUp(v){const e=Math.pow(10,Math.floor(Math.log10(v)));const m=v/e;return (m<=1?1:m<=2?2:m<=2.5?2.5:m<=5?5:10)*e}
-function fmtAx(v,u){if(u==='rpm')return (v/1000).toFixed(0)+'k rpm';if(u==='A')return Math.abs(v)<1?(v*1000).toFixed(0)+' mA':v.toFixed(1)+' A';return v.toFixed(0)+' '+u}
+function fmtAx(v,u){if(u==='st')return v.toFixed(1)+' st';if(u==='rpm')return (v/1000).toFixed(0)+'k rpm';if(u==='A')return Math.abs(v)<1?(v*1000).toFixed(0)+' mA':v.toFixed(1)+' A';return v.toFixed(0)+' '+u}
 function fmtT(s){return s>=1?s+' s':s>=1e-3?+(s*1e3).toFixed(2)+' ms':+(s*1e6).toFixed(0)+' µs'}
 
 /* ===================== readings ===================== */
@@ -597,6 +614,7 @@ function row(name,val,note,cls){return `<tr class="${cls||''}"><td>${name}</td><
 function verdict(cls,title,txt){const v=$('#verdict');v.className='verdict '+cls;v.innerHTML=`<b>${title}</b>${txt}`}
 function renderReadings(){
   const n=sim.n;if(!n||n.vcc===undefined)return;
+  if(S.drive==='st'){renderST();return}
   if(S.drive!=='hb'){
     const bjt=S.drive==='bjt',p=PART[S.part];let h='';
     h+=row('VCC',fV(n.vcc),'motor supply');
@@ -655,6 +673,7 @@ function renderReadings(){
 /* ===================== schematic live update ===================== */
 function updateSchematic(){
   const n=sim.n;if(!n||n.vcc===undefined)return;
+  if(S.drive==='st'){updST();return}
   const rot=$('#rotor');if(rot){const c=rot.getAttribute('transform').split(')')[0]+')';rot.setAttribute('transform',`${c} rotate(${(sim.vis%360).toFixed(1)})`)}
   setTag('tVcc','VCC = '+n.vcc.toFixed(1)+' V');
   if(S.drive!=='hb'){
@@ -815,20 +834,21 @@ function howHB0(){
   <h4>Freewheeling diodes</h4><p>When switches open, the motor current flows on through the diodes: D3 + D2 after Forward (back into VCC). During PWM only SW4 opens, so the current loops through SW1 and D2 (slow decay). MOSFETs include body diodes; bridges built from relays or BJTs need four external diodes. Untick them to see the avalanche spikes.</p>`}
 function renderEx(){
   const ex=$('#ex');
-  if(S.ex==='how')ex.innerHTML=S.drive==='hb'?howHB():howLow();
+  if(S.ex==='how')ex.innerHTML=S.drive==='st'?howST():S.drive==='hb'?howHB():howLow();
   else if(S.ex==='ana'){ex.innerHTML=anaHTML();updAnalysis()}
   else if(S.ex==='tasks'){tasksSig='';renderTasks()}
-  else{const set=S.drive==='hb'?CODE.hb:CODE.low;const src=S.lang==='asm'?set.asm:set.c;
+  else{const set=S.drive==='st'?genST():S.drive==='hb'?CODE.hb:CODE.low;const src=S.lang==='asm'?set.asm:set.c;
     ex.innerHTML=`<div class="codesel seg" data-k="lang"><button type="button" data-v="asm" aria-pressed="${S.lang==='asm'}">Assembly (MPASM)</button><button type="button" data-v="c" aria-pressed="${S.lang==='c'}">C (XC8)</button></div>
     <pre class="code" id="code">${src.split('\n').map((l,i)=>`<span class="ln" data-i="${i}">${S.lang==='asm'?hlAsm(l):hlC(l)||' '}</span>`).join('')}</pre>
-    <p class="note">${S.drive==='hb'?'The PIC16F84A has no PWM hardware, so speed control is done in software; a PIC16F877 can use its CCP module instead. Delays are shortened in the demo.':'The PIC16F84A has no CCP/PWM module, so PWM is generated in software. Highlighted line = what the pin is doing now.'}</p>`;
+    <p class="note">${S.drive==='st'?'The step table is generated from the selected mode. The highlighted RETLW is the pattern on PORTB right now. Change the delay to change the speed; use DECF instead of INCF to reverse.':S.drive==='hb'?'The PIC16F84A has no PWM hardware, so speed control is done in software; a PIC16F877 can use its CCP module instead. Delays are shortened in the demo.':'The PIC16F84A has no CCP/PWM module, so PWM is generated in software. Highlighted line = what the pin is doing now.'}</p>`;
     ex.querySelector('[data-k="lang"]').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.lang=b.dataset.v;renderEx()});
     highlightCode();}
 }
 let lastHL='';
 function highlightCode(){
   if(S.ex!=='code'||S.lang!=='asm')return;let lines=[];
-  if(S.drive==='hb')lines=HBLINES[S.hb.mode]||[];
+  if(S.drive==='st'){const b=sim.n.b;lines=b&&(b[2]||b[5])?[ST_FIRST+sim.st.idx]:[]}
+  else if(S.drive==='hb')lines=HBLINES[S.hb.mode]||[];
   else{const pv=pinLevel(sim.t);lines=pv===5?CODE.low.hlOn:pv===0?CODE.low.hlOff:[]}
   const key=lines.join(',');if(key===lastHL&&document.querySelector('#code .hl'))return;lastHL=key;
   document.querySelectorAll('#code .ln').forEach(l=>l.classList.toggle('hl',lines.includes(+l.dataset.i)));
@@ -836,18 +856,239 @@ function highlightCode(){
 function syncExTabs(){document.querySelectorAll('.itabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.ex===S.ex));renderEx()}
 document.querySelector('.itabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.ex=b.dataset.ex;syncExTabs()});
 
+/* ===================== stepper on an L293D ===================== */
+const STM={R:30,L:0.04,Km:0.3,Nr:50,J:2e-5,b:0.002,drop:1.2,vd:0.7};
+const SEQ={wave:[[1,0],[0,1],[-1,0],[0,-1]],full:[[1,1],[-1,1],[-1,-1],[1,-1]],half:[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]]};
+const SANG={wave:[0,90,180,270],full:[45,135,225,315],half:[0,45,90,135,180,225,270,315]};
+const RATES=[1,2,5,10,20,50,100,150,200,300,400,500,600,800,1000];
+const SMDESC={wave:'One coil at a time: 4 states per electrical cycle. Least current and least torque.',full:'Both coils on: about 1.4 × the torque of wave drive with the same 1.8° steps. The usual choice.',half:'Alternates one and two coils: 8 states, 0.9° steps. Smoother, but the torque varies from step to step.'};
+S.st={mode:'full',dir:1,ri:4,run:false,hold:true,ramp:false};
+sim.st={idx:0,cmd:Math.PI/4,th:Math.PI/4,w:0,iA:0,iB:0,acc:0,rate:0,steps:0,half:0,target:null,ui:false,lostStart:0,failRate:0};
+const patBits=p=>[p[0]>0?1:0,p[0]<0?1:0,p[0]!==0?1:0,p[1]>0?1:0,p[1]<0?1:0,p[1]!==0?1:0];
+const bits6=b=>b[0]|b[1]<<1|b[2]<<2|b[3]<<3|b[4]<<4|b[5]<<5;
+const patName=p=>[p[0]?'A'+(p[0]>0?'+':'−'):'',p[1]?'B'+(p[1]>0?'+':'−'):''].filter(Boolean).join(' ')||'off';
+function stPattern(){if(!(S.st.run||S.st.hold))return[0,0,0,0,0,0];return patBits(SEQ[S.st.mode][sim.st.idx])}
+function stVout(IN,EN,s,V){return s>0?((EN&&IN)?V-STM.drop:-STM.vd):((EN&&!IN)?STM.drop:V+STM.vd)}
+function stTr(IN,EN,s){return s>0?!!(EN&&IN):!!(EN&&!IN)}
+function stCoil(i,IN1,IN2,EN,e,V,dt){
+  if(i!==0){const s=Math.sign(i);const v=stVout(IN1,EN,s,V)-stVout(IN2,EN,-s,V);let ni=i+(v-STM.R*i-e)/STM.L*dt;if(Math.sign(ni)!==s)ni=0;return{i:ni,v,s}}
+  for(const s of[1,-1]){const v=stVout(IN1,EN,s,V)-stVout(IN2,EN,-s,V);const d=(v-e)/STM.L;if(Math.sign(d)===s)return{i:d*dt,v,s}}
+  return{i:0,v:e,s:0}}
+function stLost(){const st=sim.st;return 4*Math.round((st.cmd-st.th)/(2*Math.PI))}
+function stDo(d){const st=sim.st,N=SEQ[S.st.mode].length;st.idx=(st.idx+d+N)%N;st.cmd+=d*(S.st.mode==='half'?Math.PI/4:Math.PI/2);st.steps++;
+  if(S.st.mode==='half')st.half++;sim.flags[d>0?'cw':'ccw']=true;if(st.steps>6)sim.flags['m_'+S.st.mode]=true;
+  if(st.target!==null&&st.steps>=st.target){S.st.run=false;st.target=null;st.ui=true}}
+function stSetMode(m){const st=sim.st;S.st.mode=m;const angs=SANG[m],th=st.th;let best=0,bd=1e9,bang=th;
+  const base=Math.floor(th/(2*Math.PI))*2*Math.PI;
+  for(let k=0;k<angs.length;k++)for(const off of[-2*Math.PI,0,2*Math.PI]){const a=base+off+angs[k]*Math.PI/180,d=Math.abs(a-th);if(d<bd){bd=d;best=k;bang=a}}
+  st.idx=best;st.cmd=bang;st.lostStart=0}
+function stepST(dt){
+  const V=S.vcc,st=sim.st,K=STM.Km;
+  if(S.st.run){const tgt=RATES[S.st.ri];st.rate=S.st.ramp?Math.min(tgt,Math.max(st.rate,20)+2000*dt):tgt;
+    st.acc+=dt*st.rate;while(st.acc>=1&&S.st.run){st.acc-=1;stDo(S.st.dir)}}else{st.rate=0;st.acc=0}
+  const b=stPattern(),sn=Math.sin(st.th),cs=Math.cos(st.th);
+  const eA=-K*st.w*sn,eB=K*st.w*cs;
+  const A=stCoil(st.iA,b[0],b[1],b[2],eA,V,dt),B=stCoil(st.iB,b[3],b[4],b[5],eB,V,dt);
+  st.iA=A.i;st.iB=B.i;
+  const T=K*(-st.iA*sn+st.iB*cs),J=STM.J*S.load,Tf=0.004*(S.load-1);
+  let acc=T-STM.b*st.w;
+  if(Math.abs(st.w)<1e-3&&Math.abs(acc)<Tf)st.w=0;else{acc-=Tf*Math.sign(st.w||acc);st.w+=acc/J*dt}
+  st.th+=STM.Nr*st.w*dt;
+  const pinP=(IN,EN,s,ii)=>{const a=Math.abs(ii);if(!s||!a)return[0,0,0];const tr=stTr(IN,EN,s);return[tr?STM.drop*a:0,tr?0:STM.vd*a,s>0?(tr?a:0):(tr?0:-a)]};
+  const p1=pinP(b[0],b[2],A.s,st.iA),p2=pinP(b[1],b[2],-A.s,st.iA),p3=pinP(b[3],b[5],B.s,st.iB),p4=pinP(b[4],b[5],-B.s,st.iB);
+  const ptr=p1[0]+p2[0]+p3[0]+p4[0],pdi=p1[1]+p2[1]+p3[1]+p4[1],isup=p1[2]+p2[2]+p3[2]+p4[2];
+  accE(dt,{pin:V*isup,pcu:STM.R*(st.iA**2+st.iB**2),pconv:eA*st.iA+eB*st.iB,pq:ptr,pd:pdi,i:0,w:st.w},[0,0,0,0]);
+  const lost=stLost();
+  if(lost!==st.lostStart&&S.st.run){if(!S.st.ramp){sim.flags.slost=true;st.failRate=Math.max(st.failRate,RATES[S.st.ri])}}
+  if(S.st.run&&S.st.ramp&&st.failRate&&RATES[S.st.ri]>=st.failRate&&st.rate>=st.failRate&&lost===st.lostStart&&st.steps>40)sim.flags.sramp=true;
+  sim.n={vcc:V,b,port:bits6(b),iA:st.iA,iB:st.iB,vA:A.v,vB:B.v,
+    dioA:!!A.s&&!(stTr(b[0],b[2],A.s)&&stTr(b[1],b[2],-A.s)),dioB:!!B.s&&!(stTr(b[3],b[5],B.s)&&stTr(b[4],b[5],-B.s)),T,lost,pchip:ptr+pdi};
+}
+function stRpm(){return RATES[S.st.ri]*(S.st.mode==='half'?0.9:1.8)/6}
+function buildControlsST(){
+  const t=S.st;
+  $('#ctl').innerHTML=`<div class="grp"><div class="lbl">Motor supply VS · pin 8 <b id="vccV">${S.vcc.toFixed(1)} V</b></div><input type="range" id="vcc" min="5" max="12" step="0.5" value="${S.vcc}"></div>
+  <div class="grp"><div class="lbl">Stepping mode</div>${segBtns('smode',[['wave','Wave'],['full','Full step'],['half','Half step']],t.mode)}<p class="note" id="smDesc">${SMDESC[t.mode]}</p></div>
+  <div class="grp"><div class="lbl">Direction</div>${segBtns('sdir',[[1,'Forward ↺'],[-1,'Reverse ↻']],t.dir)}</div>
+  <div class="grp"><div class="lbl">Step rate <b id="rateV"></b></div><input type="range" id="srate" min="0" max="${RATES.length-1}" step="1" value="${t.ri}">
+    <label class="toggle" style="margin-top:6px"><input type="checkbox" id="sramp" ${t.ramp?'checked':''}><span><b>Acceleration ramp</b><small>start slowly, speed up at 2000 steps/s²</small></span></label></div>
+  <div class="grp" style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn" id="srun">${t.run?'■ Stop':'▶ Run'}</button><button type="button" class="btn ghost" id="sone">Single step</button><button type="button" class="btn ghost" id="srev">1 revolution</button></div>
+  <div class="grp"><label class="toggle"><input type="checkbox" id="shold" ${t.hold?'checked':''}><span><b>Hold position when stopped</b><small>untick to release the motor: EN1 = EN2 = 0</small></span></label></div>
+  <div class="grp"><div class="lbl">Load inertia &amp; friction <b id="loadV">${S.load}×</b></div><input type="range" id="load" min="1" max="6" step="0.5" value="${S.load}"></div>
+  <p class="note">Motor model: bipolar stepper, 200 steps/rev (1.8°), 30 Ω and 40 mH per phase, k = 0.3 N·m/A. L293D: ≈ 1.2 V lost in each conducting output, internal clamp diodes.</p>`;
+  const rv=()=>{$('#rateV').textContent=RATES[S.st.ri]+' steps/s · '+stRpm().toFixed(1)+' rpm'};rv();
+  $('#vcc').oninput=e=>{S.vcc=+e.target.value;$('#vccV').textContent=S.vcc.toFixed(1)+' V'};
+  $('#load').oninput=e=>{S.load=+e.target.value;$('#loadV').textContent=S.load+'×'};
+  $('#srate').oninput=e=>{S.st.ri=+e.target.value;rv();sim.st.lostStart=stLost()};
+  $('#sramp').onchange=e=>{S.st.ramp=e.target.checked};
+  $('#shold').onchange=e=>{S.st.hold=e.target.checked};
+  const startRun=()=>{stSetMode(S.st.mode);S.st.run=true;sim.st.rate=0;sim.st.lostStart=stLost();$('#srun').textContent='■ Stop'};
+  $('#srun').onclick=()=>{if(S.st.run){S.st.run=false;sim.st.target=null;$('#srun').textContent='▶ Run'}else{sim.st.target=null;startRun()}};
+  $('#sone').onclick=()=>{S.st.run=false;sim.st.target=null;$('#srun').textContent='▶ Run';stDo(S.st.dir)};
+  $('#srev').onclick=()=>{sim.st.target=sim.st.steps+SEQ[S.st.mode].length*50;startRun()};
+  document.querySelectorAll('#ctl .seg').forEach(sg=>sg.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const k=sg.dataset.k,v=b.dataset.v;
+    sg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    if(k==='smode'){stSetMode(v);$('#smDesc').textContent=SMDESC[v];rv()}else if(k==='sdir'){S.st.dir=+v;sim.st.lostStart=stLost()}
+    renderEx()}));
+}
+function buildST(){
+  const CX=220,CR=410,sig=[['IN1','RB0',110,2],['EN1','RB2',150,1],['IN2','RB1',190,7],['IN3','RB3',250,10],['EN2','RB5',290,9],['IN4','RB4',330,15]];
+  let s=`<svg viewBox="0 0 800 430" role="img" aria-label="PIC16F84A driving a two-phase bipolar stepper through an L293D">
+  <g id="flows"><path class="flow n" id="fA" d="M${CR},110 H480 V190 H${CR}"/><path class="flow n" id="fB" d="M${CR},250 H480 V330 H${CR}"/></g>
+  <rect x="20" y="60" width="96" height="310" rx="8" fill="var(--soft)" stroke="var(--wire)" stroke-width="2"/><text class="lab" x="68" y="82" text-anchor="middle">PIC16F84A</text>
+  <rect x="${CX}" y="60" width="${CR-CX}" height="315" rx="8" fill="var(--accent-soft)" stroke="var(--wire)" stroke-width="2.2"/>
+  <text class="lab" x="${CX+120}" y="84" text-anchor="middle" style="font-size:15px">L293D</text>
+  <text class="labm" x="${CX+95}" y="356" text-anchor="middle">clamp diodes to VS and GND</text><text class="labm" x="${CX+95}" y="369" text-anchor="middle">on every output</text>
+  <path class="w" d="M${CX+40},28 V60" style="stroke:var(--hi)"/><text class="labm" x="${CX+46}" y="42">16 · V<tspan dy="3" font-size="9">LS</tspan><tspan dy="-3"> 5 V</tspan></text>
+  <path class="w rail" d="M${CR-30},28 V60"/><text class="labm" x="${CR-24}" y="42">8 · V<tspan dy="3" font-size="9">S</tspan></text>
+  <path class="w" d="M${CX+95},375 V392"/>${gnd(CX+95,392)}<text class="labm" x="${CX+108}" y="390">4, 5, 12, 13</text>`;
+  for(const [nm,rb,y,pn] of sig)s+=`<text class="labm" x="110" y="${y-5}" text-anchor="end">${rb}</text><path class="w" d="M116,${y} H${CX}"/><circle id="lv${nm}" cx="160" cy="${y}" r="6" stroke="var(--wire)" stroke-width="1.4"/><text class="labm" x="${CX-6}" y="${y-5}" text-anchor="end">${pn}</text><text class="labm" x="${CX+6}" y="${y+4}">${nm}</text>`;
+  const OUTP={1:3,2:6,3:11,4:14};
+  for(const [id,y] of [[1,110],[2,190],[3,250],[4,330]])s+=`<path class="w" d="M${CX+36},${y} H${CX+60}"/><path id="drv${id}" d="M${CX+60},${y-14} L${CX+60},${y+14} L${CX+90},${y} Z" stroke="var(--wire)" stroke-width="2" fill="var(--card)"/><path class="w" d="M${CX+90},${y} H${CR}"/><text class="labm" x="${CR-8}" y="${y-6}" text-anchor="end">OUT${id}</text><text class="labm" x="${CR+6}" y="${y-6}">${OUTP[id]}</text>`;
+  s+=`<path class="w" d="M${CX+36},150 H${CX+75} M${CX+75},117 V183 M${CX+36},290 H${CX+75} M${CX+75},257 V323"/>`;
+  const coil=(y1,y2,l)=>`<path class="w" d="M${CR},${y1} H480 V${y1+12} M480,${y2-12} V${y2} H${CR}"/><path class="w" d="M480,${y1+12} a7,7 0 0,1 0,14 a7,7 0 0,1 0,14 a7,7 0 0,1 0,14 a7,7 0 0,1 0,14"/><text class="lab" x="466" y="${(y1+y2)/2+5}" text-anchor="end">${l}</text>`;
+  s+=coil(110,190,'A')+coil(250,330,'B');
+  const RX=712,RY=185;
+  s+=`<circle cx="${RX}" cy="${RY}" r="90" fill="none" stroke="var(--line)" stroke-width="9"/>
+  <rect id="pAR" x="${RX+52}" y="${RY-19}" width="34" height="38" rx="4" stroke="var(--wire)" stroke-width="1.5"/><rect id="pAL" x="${RX-86}" y="${RY-19}" width="34" height="38" rx="4" stroke="var(--wire)" stroke-width="1.5"/>
+  <rect id="pBT" x="${RX-19}" y="${RY-86}" width="38" height="34" rx="4" stroke="var(--wire)" stroke-width="1.5"/><rect id="pBB" x="${RX-19}" y="${RY+52}" width="38" height="34" rx="4" stroke="var(--wire)" stroke-width="1.5"/>
+  <text id="xAR" x="${RX+69}" y="${RY+5}" text-anchor="middle" style="font:700 13px var(--ui);fill:#fff"></text><text id="xAL" x="${RX-69}" y="${RY+5}" text-anchor="middle" style="font:700 13px var(--ui);fill:#fff"></text>
+  <text id="xBT" x="${RX}" y="${RY-64}" text-anchor="middle" style="font:700 13px var(--ui);fill:#fff"></text><text id="xBB" x="${RX}" y="${RY+74}" text-anchor="middle" style="font:700 13px var(--ui);fill:#fff"></text>
+  <text class="labm" x="${RX+92}" y="${RY-28}" text-anchor="end">A</text><text class="labm" x="${RX+26}" y="${RY-90}">B</text>
+  <g id="strot" transform="translate(${RX},${RY})"><circle r="46" fill="var(--card)" stroke="var(--wire)" stroke-width="2"/><rect x="0" y="-12" width="42" height="24" rx="4" fill="#d6453d"/><rect x="-42" y="-12" width="42" height="24" rx="4" fill="#3d6fd6"/><text x="21" y="5" text-anchor="middle" style="font:700 13px var(--ui);fill:#fff">N</text><text x="-21" y="5" text-anchor="middle" style="font:700 13px var(--ui);fill:#fff">S</text></g>
+  <text class="labm" x="${RX}" y="${RY+110}" text-anchor="middle">2-pole model of the rotor</text>`;
+  let ticks='';for(let k=0;k<50;k++){const a=k*Math.PI/25,r1=k%5?28:24;ticks+=`M${(Math.cos(a)*r1).toFixed(1)},${(-Math.sin(a)*r1).toFixed(1)} L${(Math.cos(a)*32).toFixed(1)},${(-Math.sin(a)*32).toFixed(1)} `}
+  s+=`<g transform="translate(622,368)"><circle r="34" fill="var(--soft)" stroke="var(--wire)" stroke-width="1.6"/><path d="${ticks}" stroke="var(--muted)" stroke-width="1"/><line id="dialP" x1="0" y1="0" x2="30" y2="0" stroke="var(--hi)" stroke-width="3" stroke-linecap="round"/><circle r="3" fill="var(--wire)"/></g>
+  <text class="lab" x="664" y="364" id="shaftT"></text><text class="labm" x="664" y="381">200 steps/turn</text>
+  ${tag('tPort',20,20,'v')}${tag('tVcc',CR-20,4,'v')}${tag('tIA',492,104,'i')}${tag('tVA',492,170,'v')}${tag('tIB',492,244,'i')}${tag('tVB',492,310,'v')}
+  </svg>`;
+  return s;
+}
+function updST(){
+  const n=sim.n,st=sim.st;if(n.iA===undefined)return;
+  setTag('tVcc','V_S = '+n.vcc.toFixed(1)+' V');setTag('tPort','PORTB = b\'00'+n.port.toString(2).padStart(6,'0')+'\'');
+  setTag('tIA','I_A = '+fI(n.iA));setTag('tIB','I_B = '+fI(n.iB));setTag('tVA','V_A = '+fV(n.vA));setTag('tVB','V_B = '+fV(n.vB));
+  setFlow('fA',n.iA,n.dioA?'d':'n',0.3);setFlow('fB',n.iB,n.dioB?'d':'n',0.3);
+  ['IN1','IN2','EN1','IN3','IN4','EN2'].forEach((nm,k)=>{const d=$('#lv'+nm);if(d)d.setAttribute('fill',n.b[k]?'var(--hi)':'var(--lo)')});
+  [[1,0,2],[2,1,2],[3,3,5],[4,4,5]].forEach(([id,ii,ee])=>{const d=$('#drv'+id);if(d)d.setAttribute('fill',!n.b[ee]?'var(--card)':n.b[ii]?'var(--hi)':'var(--lo)')});
+  const pole=(id,tx,i,sgn)=>{const el=$('#'+id),t=$('#'+tx);if(!el)return;const a=Math.abs(i);const S_=i*sgn>0;
+    el.setAttribute('fill',a<0.005?'var(--soft)':S_?'#3d6fd6':'#d6453d');el.setAttribute('fill-opacity',a<0.005?1:(0.25+0.75*Math.min(1,a/0.33)).toFixed(2));t.textContent=a<0.005?'':S_?'S':'N'};
+  pole('pAR','xAR',n.iA,1);pole('pAL','xAL',n.iA,-1);pole('pBT','xBT',n.iB,1);pole('pBB','xBB',n.iB,-1);
+  const deg=st.th*180/Math.PI;$('#strot').setAttribute('transform',`translate(712,185) rotate(${(-deg%360).toFixed(2)})`);
+  const md=deg/STM.Nr;$('#dialP').setAttribute('transform',`rotate(${(-md%360).toFixed(2)})`);
+  $('#shaftT').textContent=`shaft ${(((md%360)+360)%360).toFixed(1)}°`;
+}
+function renderST(){
+  const n=sim.n,st=sim.st,p=SEQ[S.st.mode][st.idx];let h='';
+  const on=n.b[2]||n.b[5];
+  h+=row('V<sub>S</sub> (pin 8)',fV(n.vcc),'V<sub>LS</sub> (pin 16) = 5 V');
+  h+=row('Step pattern',on?patName(p):'released',S.st.mode+' · state '+(st.idx+1)+' of '+SEQ[S.st.mode].length);
+  h+=row('PORTB (RB5..RB0)','b\'00'+n.port.toString(2).padStart(6,'0')+'\'','0x'+n.port.toString(16).toUpperCase().padStart(2,'0'));
+  h+=row('Coil A voltage',fV(n.vA),n.dioA?'clamp diodes conduct':'');h+=row('I<sub>A</sub>',fI(n.iA),'',Math.abs(n.iA)>0.6?'bad':'');
+  h+=row('Coil B voltage',fV(n.vB),n.dioB?'clamp diodes conduct':'');h+=row('I<sub>B</sub>',fI(n.iB),'',Math.abs(n.iB)>0.6?'bad':'');
+  h+=row('Step rate',S.st.run?Math.round(st.rate)+' steps/s':'stopped',S.st.run?(Math.round(st.rate)*(S.st.mode==='half'?0.9:1.8)/6).toFixed(1)+' rpm':'');
+  h+=row('Commanded / rotor',(st.cmd/(Math.PI/2)).toFixed(1)+' / '+(st.th/(Math.PI/2)).toFixed(1),'full steps');
+  h+=row('Lost steps',String(Math.abs(n.lost)),n.lost?'rotor slipped behind the field':'',n.lost?'bad':'');
+  h+=row('Torque on rotor',(n.T*1000).toFixed(0)+' mN·m','holding ≈ '+(STM.Km*Math.max(0,S.vcc-2.4)/STM.R*(S.st.mode==='full'?1.41:1)*1000).toFixed(0)+' mN·m');
+  h+=row('L293D dissipation',fP(n.pchip),'≈ 1.2 V × current per conducting output',n.pchip>1.5?'warn':'');
+  $('#rd').innerHTML=h;
+  const coilV=Math.max(0,S.vcc-2.4);
+  if(n.lost)verdict('bad','Missed steps',`The rotor fell ${Math.abs(n.lost)} full step${Math.abs(n.lost)>1?'s':''} behind the field. At high rates the back-EMF and the coil time constant L/R = 1.3 ms keep the current low, and a sudden start asks for more acceleration than the torque can give. Lower the rate, turn the ramp on or raise V<sub>S</sub>. Note the PIC cannot tell this happened: steppers are open loop.`);
+  else if(Math.abs(n.iA)>0.6||Math.abs(n.iB)>0.6)verdict('warn','Above the L293D rating','More than 600 mA per channel: use a lower V<sub>S</sub>, series resistors or a chopper driver.');
+  else if(!on)verdict('ok','Released','EN1 = EN2 = 0: all outputs are off and the shaft turns freely. Nothing holds the position.');
+  else if(S.st.run)verdict('ok','Stepping',`${SMDESC[S.st.mode]} The coils get V<sub>S</sub> minus about 2.4 V lost in the L293D, so ≈ ${coilV.toFixed(1)} V and at most ${fI(coilV/STM.R)}.`);
+  else verdict('ok','Holding position',`The pattern ${patName(p)} stays on PORTB, so current keeps flowing and the rotor is locked in place. Holding costs power even when nothing moves.`);
+}
+function howST(){
+  const m=S.st.mode,seq=SEQ[m];
+  return `<p>A <b>two-phase (bipolar) stepper</b> has two separate coils, A and B, placed 90° apart. Each needs current in <b>both directions</b>, so each needs its own H-bridge. The L293D contains exactly two: drivers 1 + 2 feed coil A (OUT1–OUT2), drivers 3 + 4 feed coil B (OUT3–OUT4).</p>
+  <h4>Step sequence: ${m} drive</h4><table class="tt"><tr><th>#</th><th>A</th><th>B</th><th>IN1 IN2 EN1</th><th>IN3 IN4 EN2</th><th>PORTB</th><th>θe</th></tr>
+  ${seq.map((p,k)=>{const b=patBits(p);return `<tr class="${k===sim.st.idx?'cur':''}"><td>${k+1}</td><td>${p[0]>0?'+':p[0]<0?'−':'off'}</td><td>${p[1]>0?'+':p[1]<0?'−':'off'}</td><td>${b[0]} ${b[1]} ${b[2]}</td><td>${b[3]} ${b[4]} ${b[5]}</td><td>0x${bits6(b).toString(16).toUpperCase().padStart(2,'0')}</td><td>${SANG[m][k]}°</td></tr>`}).join('')}</table>
+  <p>A coil that must be <b>off</b> is disabled with its EN pin, so its current dies quickly through the L293D's clamp diodes. Reverse the table order to reverse the motor.</p>
+  <h4>Why the rotor moves</h4><p>Current in coil A magnetises its two poles (one N, one S); coil B does the same at 90°. The rotor's permanent magnet turns to line up with the resulting field. Each new pattern moves the field one step, and the rotor follows. Inside a real motor a toothed rotor (50 teeth) turns one electrical cycle into 7.2° of shaft rotation, so one full step = 1.8°.</p>
+  <h4>Limits you can see here</h4><ul>
+  <li><b>Speed</b>: the coil current needs about 3 × L/R ≈ 4 ms to build up, and the back-EMF grows with speed, so torque falls as the step rate rises.</li>
+  <li><b>Pull-in vs pull-out</b>: starting abruptly at a high rate fails, yet the motor can <i>run</i> at that rate once it gets there. Ramping the rate up solves it.</li>
+  <li><b>Open loop</b>: the PIC never knows whether a step was missed. Watch the rotor and command traces on the scope separate.</li>
+  <li><b>The L293D wastes voltage</b>: its Darlington outputs drop ≈ 1.2 V each, about 2.4 V per coil. At V<sub>S</sub> = 5 V only ≈ 2.6 V reaches the coil.</li>
+  <li><b>Current</b>: 600 mA per channel. For bigger steppers use a chopper driver (A4988, DRV8825) that regulates the current.</li></ul>
+  <h4>Wiring</h4><p>Pin 16 → +5 V, pin 8 → motor supply, pins 4, 5, 12, 13 → GND (and copper for cooling), 100 nF at both supply pins plus 100 µF on V<sub>S</sub>. Find the coil pairs with a multimeter: the two wires of one coil show ≈ 30 Ω between them.</p>`;
+}
+let ST_FIRST=0;
+function genST(){
+  const m=S.st.mode,seq=SEQ[m],N=seq.length;
+  const bin=v=>"b'"+v.toString(2).padStart(8,'0')+"'";
+  const head=[`; Two-phase (bipolar) stepper through an L293D, ${m} drive`,
+  `; RB0=IN1 RB1=IN2 RB2=EN1 -> coil A (OUT1-OUT2)`,
+  `; RB3=IN3 RB4=IN4 RB5=EN2 -> coil B (OUT3-OUT4)`,
+  `        LIST    P=16F84A`,`        #include <p16f84a.inc>`,`        __CONFIG _XT_OSC & _WDT_OFF & _PWRTE_ON`,
+  `NSTEP   EQU     .${N}             ; states in the table`,
+  `        CBLOCK  0x0C`,`          IDX                   ; position in the table`,`        ENDC`,
+  `        ORG     0x000`,`        CLRF    PORTB           ; EN1 = EN2 = 0: coils off`,`        BSF     STATUS,RP0`,
+  `        MOVLW   b'11000000'     ; RB0..RB5 outputs`,`        MOVWF   TRISB`,`        BCF     STATUS,RP0`,`        CLRF    IDX`,
+  `LOOP    MOVF    IDX,W`,`        CALL    STEPS           ; W = coil pattern`,`        MOVWF   PORTB`,
+  `        CALL    STEP_DELAY      ; sets the step rate`,`        INCF    IDX,F           ; next state (DECF = reverse)`,
+  `        MOVLW   NSTEP`,`        SUBWF   IDX,W`,`        BTFSC   STATUS,Z        ; IDX = NSTEP ?`,`        CLRF    IDX             ; wrap to the start`,`        GOTO    LOOP`,
+  `STEPS   ADDWF   PCL,F           ; computed jump into the table`];
+  ST_FIRST=head.length;
+  const tbl=seq.map((p,k)=>`        RETLW   ${bin(bits6(patBits(p)))}     ; ${k+1}: ${patName(p)}`);
+  const asm=head.concat(tbl,[`        END`]).join('\n');
+  const c=`#include <xc.h>
+#pragma config FOSC = XT, WDTE = OFF, PWRTE = ON, CP = OFF
+#define _XTAL_FREQ 4000000
+// RB0=IN1 RB1=IN2 RB2=EN1 (coil A) | RB3=IN3 RB4=IN4 RB5=EN2 (coil B)
+#define N ${N}
+const unsigned char STEPS[N] = {   // ${m} drive
+${seq.map((p,k)=>`    0x${bits6(patBits(p)).toString(16).toUpperCase().padStart(2,'0')}${k<N-1?',':' '}   // ${patName(p)}`).join('\n')}
+};
+
+void step_delay(unsigned int ms) { while (ms--) __delay_ms(1); }
+
+void main(void)
+{
+    unsigned char i = 0;
+    PORTB = 0x00;            // both bridges disabled
+    TRISB = 0xC0;            // RB0..RB5 outputs
+    for (;;) {
+        PORTB = STEPS[i];
+        step_delay(10);                  // 100 steps/s
+        i = (i + 1) % N;                 // forward
+        // i = (i + N - 1) % N;          // reverse
+    }
+}`;
+  return{asm,c};
+}
+function drawPhasor(){const c=$('#ts');if(!c)return;const k=window.__fitK||1;const r=c.getBoundingClientRect();const w=r.width/k,h=r.height/k;if(w<20)return;
+  const dpr=(window.devicePixelRatio||1)*k,W=Math.round(w*dpr),H=Math.round(h*dpr);if(c.width!==W||c.height!==H){c.width=W;c.height=H}
+  const g=c.getContext('2d');g.setTransform(W/w,0,0,H/h,0,0);const css=getComputedStyle(document.documentElement),col=n=>css.getPropertyValue(n).trim();
+  g.fillStyle=col('--soft');g.fillRect(0,0,w,h);
+  const I0=Math.max(0.05,(S.vcc-2.4)/STM.R),m=Math.max(0.4,I0*1.25),cx0=w/2,cy0=h/2,sc=Math.min(w/2-14,h/2-14)/m;
+  const X=v=>cx0+v*sc,Y=v=>cy0-v*sc;
+  g.strokeStyle=col('--line');g.lineWidth=1;for(let v=-0.4;v<=0.41;v+=0.1){g.beginPath();g.moveTo(X(v),Y(-m));g.lineTo(X(v),Y(m));g.stroke();g.beginPath();g.moveTo(X(-m),Y(v));g.lineTo(X(m),Y(v));g.stroke()}
+  g.strokeStyle=col('--muted');g.lineWidth=1.3;g.beginPath();g.moveTo(X(-m),cy0);g.lineTo(X(m),cy0);g.moveTo(cx0,Y(-m));g.lineTo(cx0,Y(m));g.stroke();
+  g.fillStyle=col('--muted');g.font='500 10px IBM Plex Mono, monospace';g.textAlign='right';g.fillText('I_A',X(m)-2,cy0-5);g.textAlign='right';g.fillText('I_B',cx0-5,Y(m)+10);g.textAlign='left';g.fillText('0.1 A/div',6,h-6);
+  SEQ[S.st.mode].forEach((p,k)=>{const x=X(p[0]*I0),y=Y(p[1]*I0);g.strokeStyle=col('--accent');g.lineWidth=1.5;g.beginPath();g.arc(x,y,6,0,7);g.stroke();g.fillStyle=col('--accent');g.textAlign='center';g.fillText(k+1,x+(p[0]>=0?12:-12),y-8)});
+  const tr=sim.trail;if(tr.length){g.strokeStyle='rgba(232,89,12,.45)';g.lineWidth=1.5;g.beginPath();tr.forEach((p,j)=>{j?g.lineTo(X(p.x),Y(p.y)):g.moveTo(X(p.x),Y(p.y))});g.stroke();
+    const p=tr[tr.length-1];g.strokeStyle='#e8590c';g.lineWidth=2.5;g.beginPath();g.moveTo(cx0,cy0);g.lineTo(X(p.x),Y(p.y));g.stroke();g.fillStyle='#e8590c';g.beginPath();g.arc(X(p.x),Y(p.y),5,0,7);g.fill();
+    g.fillStyle=col('--ink');g.font='600 11px IBM Plex Mono, monospace';g.textAlign='right';g.fillText(`|I| = ${fI(Math.hypot(p.x,p.y))}`,w-6,14)}
+}
+
 /* ===================== analysis ===================== */
-function anaHTML(){return `<div class="lbl">Torque–speed plane <b>${S.drive==='hb'?'four quadrants':'motoring quadrant'}</b></div><div class="tsw"><canvas id="ts"></canvas></div>
+function anaHTML(){if(S.drive==='st')return `<div class="lbl">Current vector IA, IB <b>points the rotor</b></div><div class="tsw"><canvas id="ts"></canvas></div>
+  <p class="note">Each step pattern is a point: wave drive sits on the axes, full step on the diagonals (√2 × the current, more torque), half step alternates. The rotor's N pole follows this vector.</p>
+  <div class="lbl" style="margin-top:8px">Where the supply power goes <b>averaged</b></div><div id="pf"></div>
+  <div class="lbl" style="margin-top:10px">L293D: steady-state junction temperature</div><div id="tj"></div>`;
+  return `<div class="lbl">Torque–speed plane <b>${S.drive==='hb'?'four quadrants':'motoring quadrant'}</b></div><div class="tsw"><canvas id="ts"></canvas></div>
   <p class="note">Solid blue: motor characteristic at the applied average voltage${S.drive==='bjt'?' (clipped at β·I<sub>B</sub>)':''}. Dashed grey: friction load. The orange dot is the live operating point with its recent path.</p>
   <div class="lbl" style="margin-top:8px">Where the supply power goes <b>averaged</b></div><div id="pf"></div>
   <div class="lbl" style="margin-top:10px">Hottest switch: steady-state junction temperature</div><div id="tj"></div>`}
 function updAnalysis(){
   const A=sim.avg;if(A.i===undefined)return;
-  sim.trail.push({x:(A.w||0)*60/(2*Math.PI),y:MOTOR.K*A.i*1000});if(sim.trail.length>140)sim.trail.shift();
+  if(S.drive==='st')sim.trail.push({x:sim.n.iA,y:sim.n.iB});else sim.trail.push({x:(A.w||0)*60/(2*Math.PI),y:MOTOR.K*A.i*1000});if(sim.trail.length>140)sim.trail.shift();
   if(S.ex!=='ana'||!$('#pf'))return;
   drawTS();
   const css=getComputedStyle(document.documentElement),col=n=>css.getPropertyValue(n).trim();
-  const parts=[['Copper loss I²R',A.pcu,'#f08c00'],['Converted to motion E·I',A.pconv,'#2f9e44'],['Switch loss',A.pq,'#e03131'],['Diode / clamp loss',A.pd,'#f59f00']];
+  const stp=S.drive==='st';const parts=[['Copper loss I²R',A.pcu,'#f08c00'],['Converted to motion E·I',A.pconv,'#2f9e44'],[stp?'L293D output transistors':'Switch loss',A.pq,'#e03131'],[stp?'L293D clamp diodes':'Diode / clamp loss',A.pd,'#f59f00']];
   const tot=parts.reduce((s,p)=>s+Math.max(0,p[1]),0)||1;
   let h=`<div class="pbar">${parts.map(p=>`<span style="width:${(Math.max(0,p[1])/tot*100).toFixed(1)}%;background:${p[2]}" title="${p[0]}"></span>`).join('')}</div><table class="ptab">`;
   h+=`<tr><td><b>${A.pin>=0?'Supply delivers':'Motor returns to supply'}</b></td><td class="v">${fP(Math.abs(A.pin))}</td></tr>`;
@@ -856,12 +1097,13 @@ function updAnalysis(){
   h+=`<tr><td>Electrical efficiency (E·I / P<sub>in</sub>)</td><td class="v">${eff}</td></tr><tr><td>Energy returned to the supply so far</td><td class="v">${(sim.regen*1000).toFixed(2)} mJ</td></tr></table>`;
   $('#pf').innerHTML=h;
   let th,P,who;
-  if(S.drive==='hb'){th=THERM.HB;const sw=A.sw||[0,0,0,0];let j=0;for(let k=1;k<4;k++)if(sw[k]>sw[j])j=k;P=sw[j];who='SW'+(j+1)}
+  if(S.drive==='st'){th=THERM.L293D;P=(A.pq||0)+(A.pd||0);who='L293D'}
+  else if(S.drive==='hb'){th=THERM.HB;const sw=A.sw||[0,0,0,0];let j=0;for(let k=1;k<4;k++)if(sw[k]>sw[j])j=k;P=sw[j];who='SW'+(j+1)}
   else{th=S.drive==='bjt'?THERM[S.part]:THERM.IRLZ44N;P=Math.max(0,A.pq||0);who='Q1 '+(S.drive==='bjt'?S.part:'IRLZ44N')}
   const tj=25+P*th.rja,frac=Math.min(1,(tj-25)/(th.tj-25)),c=tj>th.tj?'#e03131':tj>0.75*th.tj?'#f08c00':'#2f9e44';
   $('#tj').innerHTML=`<div class="tj"><span style="width:${(frac*100).toFixed(1)}%;background:${c}"></span></div><div style="font-size:12.5px"><b style="color:${c}">${who}: T<sub>j</sub> ≈ ${tj>999?'>999':tj.toFixed(0)} °C</b> · ${fP(P)} × ${th.rja} °C/W (${th.pkg}, no heatsink) + 25 °C ambient · limit ${th.tj} °C${tj>th.tj?' → <b style="color:#e03131">it would overheat: fit a heatsink or change the part</b>':''}</div>`;
 }
-function drawTS(){const c=$('#ts');if(!c)return;const k=window.__fitK||1;const r=c.getBoundingClientRect();const w=r.width/k,h=r.height/k;if(w<20)return;
+function drawTS(){if(S.drive==='st'){drawPhasor();return}const c=$('#ts');if(!c)return;const k=window.__fitK||1;const r=c.getBoundingClientRect();const w=r.width/k,h=r.height/k;if(w<20)return;
   const dpr=(window.devicePixelRatio||1)*k,W=Math.round(w*dpr),H=Math.round(h*dpr);if(c.width!==W||c.height!==H){c.width=W;c.height=H}
   const g=c.getContext('2d');g.setTransform(W/w,0,0,H/h,0,0);const css=getComputedStyle(document.documentElement),col=n=>css.getPropertyValue(n).trim();
   const hb=S.drive==='hb',K=MOTOR.K,R=MOTOR.R,V=S.vcc,toW=x=>x*2*Math.PI/60;
@@ -904,10 +1146,17 @@ const TASKS=[
  {id:'plug',d:'hb',t:'Plug the motor (reverse at full speed)',h:'At full forward speed choose Reverse directly. The back-EMF adds to VCC: watch the current surge.'},
  {id:'fault',d:'hb',t:'Cause shoot-through, then recover',h:'Press Shoot-through (or flip IN1 and IN3), then return to Coast.'},
  {id:'shift',d:'hb',t:'Show the P-channel level-shift problem',h:'At VCC = 12 V untick the level shifter and select Coast: SW1 and SW2 cannot turn off.'},
- {id:'decay',d:'hb',t:'Run PWM with slow and with fast decay',h:'Set the speed below 100 % in Forward and try Slow, then Fast decay. Compare the ripple, diode paths and regenerated energy.'}];
-const DN={bjt:'① BJT',mos:'② MOSFET',hb:'③ H-bridge'};
+ {id:'decay',d:'hb',t:'Run PWM with slow and with fast decay',h:'Set the speed below 100 % in Forward and try Slow, then Fast decay. Compare the ripple, diode paths and regenerated energy.'},
+ {id:'swave',d:'st',t:'Compare wave and full-step drive',h:'Run the stepper in Wave mode, then in Full mode. Compare the coil currents, the torque in the readings and the current vector in Analysis.'},
+ {id:'shalf',d:'st',t:'Turn one revolution in half-step mode',h:'Choose Half step, 100–200 steps/s and press “1 revolution” (400 half-steps).'},
+ {id:'sdir',d:'st',t:'Reverse the stepper',h:'Step forward, then choose Reverse and step back.'},
+ {id:'slose',d:'st',t:'Make the stepper lose steps',h:'With the ramp off, jump straight to a high step rate (or add load) until the rotor cannot follow the field.'},
+ {id:'sramp',d:'st',t:'Beat the pull-in limit with a ramp',h:'After losing steps at a rate, turn the ramp on and run again at that rate: the motor now gets there without losing a step.'}];
+const DN={bjt:'① BJT',mos:'② MOSFET',hb:'③ H-bridge',st:'④ Stepper'};
 function checkTasks(){
-  const n=sim.n,f=sim.flags,low=S.drive!=='hb';const ok={
+  const n=sim.n,f=sim.flags,low=S.drive==='bjt'||S.drive==='mos';const ok={
+    swave:!!(f.m_wave&&f.m_full),shalf:sim.st.half>=400,sdir:!!(f.cw&&f.ccw),slose:!!f.slost,
+    sramp:!!f.sramp,
     lin:S.drive==='bjt'&&S.part==='2N2222'&&S.stall&&n.mode==='lin',
     sat:S.drive==='bjt'&&S.stall&&n.mode==='sat'&&n.i>2,
     spike:low&&sim.lastPeak>35,
@@ -945,6 +1194,8 @@ function setDrive(d){
   S.drive=d;S.hb.demo=false;sim.i=0;sim.w=0;sim.trail=[];sim.avg={};sim.lastDecay=null;sim.dec=null;sim.prevCond=false;sim.prevMode='off';sim.stop=null;SC.trig=null;SC.trigLeft=0;sim.events=0;sim.lastE=0;sim.lastPeak=0;sim.aval=false;sim.avalE=0;sim.fault=false;sim.lastPin=undefined;
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.drive===d));
   if(d==='hb'&&S.vcc<5)S.vcc=12;
+  S.st.run=false;sim.st.w=0;sim.st.rate=0;sim.st.target=null;
+  if(d==='st'&&S.win<0.2){S.win=1;$('#win').value='1';updSlow()}
   buildControls();buildSchematic();scopeReset();renderEx();step(1e-6);updateSchematic();renderReadings();
 }
 document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setDrive(b.dataset.drive)});
@@ -958,18 +1209,19 @@ function updSlow(){const f=S.win/SWEEP;$('#slowmo').textContent='slow motion ×1
 
 /* ===================== main loop ===================== */
 const SWEEP=4; // seconds of wall time per screen
-function step(dt){if(S.drive==='hb')stepHB(dt);else stepLow(dt);sim.t+=dt}
+function step(dt){if(S.drive==='st')stepST(dt);else if(S.drive==='hb')stepHB(dt);else stepLow(dt);sim.t+=dt}
 let last=performance.now(),rdT=0;sim.vis=0;
 function frame(now){
   const wdt=Math.min(0.05,(now-last)/1000);last=now;
   if(!S.paused){
-    const simDt=wdt*S.win/SWEEP;const h=1e-6;let n=Math.min(60000,Math.round(simDt/h));const hh=n?simDt/n:0;
+    const simDt=wdt*S.win/SWEEP;const h=S.drive==='st'?4e-6:1e-6;let n=Math.min(60000,Math.round(simDt/h));const hh=n?simDt/n:0;
     for(let k=0;k<n;k++){step(hh);sample();advance(hh);if(S.paused)break}
     if(SC.frozen){SC.frozen=false;$('#pause').textContent='▶ Resume';updSingle()}
     sim.vis+=sim.w/1790*720*wdt; // visual rotation: 2 rev/s at full speed
     animFlows(wdt);
   }
   updateSchematic();drawScope();
+  if(sim.st.ui){sim.st.ui=false;const b=$('#srun');if(b)b.textContent=S.st.run?'■ Stop':'▶ Run'}
   rdT+=wdt;if(rdT>0.12){rdT=0;renderReadings();highlightCode();updAnalysis();checkTasks()}
   requestAnimationFrame(frame);
 }
